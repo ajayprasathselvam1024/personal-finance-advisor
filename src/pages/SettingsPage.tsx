@@ -7,9 +7,9 @@ interface SettingsPageProps {
 }
 
 export const SettingsPage: React.FC<SettingsPageProps> = ({ onRefresh }) => {
-  const { profile, refreshProfile, seedDemoData } = useAuth();
+  const { profile, refreshProfile } = useAuth();
   const [fullName, setFullName] = useState(profile?.full_name || '');
-  const [income, setIncome] = useState(profile?.monthly_income?.toString() || '91000');
+  const [income, setIncome] = useState(profile?.monthly_income?.toString() || '0');
   const [savedMsg, setSavedMsg] = useState('');
 
   const handleSaveProfile = async (e: React.FormEvent) => {
@@ -23,12 +23,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onRefresh }) => {
     setTimeout(() => setSavedMsg(''), 3000);
   };
 
-  const handleResetDemo = async () => {
-    if (confirm('Reset application state back to default demo dataset?')) {
-      await seedDemoData();
-      onRefresh();
-    }
-  };
+
 
   const handleClearAll = async () => {
     if (confirm('⚠️ PERMANENT DELETION: Are you sure you want to clear all transactions and records?')) {
@@ -106,18 +101,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onRefresh }) => {
           Data Management & Sandbox Reset
         </h3>
 
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-xs font-bold text-slate-900 dark:text-white">Load Sample Demo Data</p>
-            <p className="text-[11px] text-slate-400">Populate account with sample incomes, EMIs, & gold loans</p>
-          </div>
-          <button
-            onClick={handleResetDemo}
-            className="rounded-xl bg-amber-500/10 px-3.5 py-2 text-xs font-bold text-amber-600 hover:bg-amber-500/20"
-          >
-            Reset Demo
-          </button>
-        </div>
+
 
         <div className="flex items-center justify-between pt-3 border-t border-slate-100 dark:border-slate-800">
           <div>

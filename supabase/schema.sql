@@ -1,6 +1,6 @@
 -- ====================================================================
 -- PERSONAL FINANCE ADVISOR & MANAGEMENT DATABASE SCHEMA
--- SUPABASE POSTGRESQL SCHEMA WITH ROW LEVEL SECURITY (RLS)
+-- SUPABASE POSTGRESQL SCHEMA WITH RBAC AND ROW LEVEL SECURITY (RLS)
 -- ====================================================================
 
 -- Enable UUID Extension if not enabled
@@ -9,8 +9,10 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 -- 1. PROFILES TABLE (Extends Supabase auth.users)
 CREATE TABLE IF NOT EXISTS public.profiles (
   id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  email TEXT,
   full_name TEXT,
-  role TEXT NOT NULL DEFAULT 'ADMIN' CHECK (role IN ('ADMIN', 'USER')),
+  role TEXT NOT NULL DEFAULT 'USER' CHECK (role IN ('ADMIN', 'USER')),
+  is_active BOOLEAN NOT NULL DEFAULT true,
   currency TEXT DEFAULT 'INR',
   monthly_income NUMERIC DEFAULT 0 CHECK (monthly_income >= 0),
   theme TEXT DEFAULT 'system' CHECK (theme IN ('light', 'dark', 'system')),
@@ -19,7 +21,16 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 2. CATEGORIES TABLE
+-- 2. USER PERMISSIONS TABLE
+CREATE TABLE IF NOT EXISTS public.user_permissions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  permission_key TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(user_id, permission_key)
+);
+
+-- 3. CATEGORIES TABLE
 CREATE TABLE IF NOT EXISTS public.categories (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
@@ -32,7 +43,7 @@ CREATE TABLE IF NOT EXISTS public.categories (
   UNIQUE(user_id, name, type)
 );
 
--- 3. INCOME TABLE
+-- 4. INCOME TABLE
 CREATE TABLE IF NOT EXISTS public.income (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
@@ -46,7 +57,7 @@ CREATE TABLE IF NOT EXISTS public.income (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 4. EXPENSES TABLE
+-- 5. EXPENSES TABLE
 CREATE TABLE IF NOT EXISTS public.expenses (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
@@ -61,7 +72,7 @@ CREATE TABLE IF NOT EXISTS public.expenses (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 5. LOANS & EMI TABLE
+-- 6. LOANS & EMI TABLE
 CREATE TABLE IF NOT EXISTS public.loans (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
@@ -81,7 +92,7 @@ CREATE TABLE IF NOT EXISTS public.loans (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 6. LOAN PAYMENTS TABLE
+-- 7. LOAN PAYMENTS TABLE
 CREATE TABLE IF NOT EXISTS public.loan_payments (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
@@ -94,7 +105,7 @@ CREATE TABLE IF NOT EXISTS public.loan_payments (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 7. GOLD LOANS TABLE
+-- 8. GOLD LOANS TABLE
 CREATE TABLE IF NOT EXISTS public.gold_loans (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
@@ -109,17 +120,6 @@ CREATE TABLE IF NOT EXISTS public.gold_loans (
   lender TEXT NOT NULL,
   gold_pledged_description TEXT NOT NULL,
   status TEXT DEFAULT 'active' CHECK (status IN ('active', 'closed')),
-  notes TEXT,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
--- 8. GOLD LOAN PAYMENTS TABLE
-CREATE TABLE IF NOT EXISTS public.gold_loan_payments (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
-  gold_loan_id UUID REFERENCES public.gold_loans(id) ON DELETE CASCADE NOT NULL,
-  amount NUMERIC NOT NULL CHECK (amount > 0),
-  payment_date DATE NOT NULL,
   notes TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -195,77 +195,63 @@ CREATE TABLE IF NOT EXISTS public.recurring_transactions (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 14. NOTIFICATIONS TABLE
-CREATE TABLE IF NOT EXISTS public.notifications (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
-  title TEXT NOT NULL,
-  message TEXT NOT NULL,
-  type TEXT DEFAULT 'info' CHECK (type IN ('info', 'warning', 'urgent', 'success')),
-  is_read BOOLEAN DEFAULT false,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
--- ====================================================================
--- INDEXES FOR MAXIMUM QUERY PERFORMANCE
--- ====================================================================
-
-CREATE INDEX IF NOT EXISTS idx_income_user_date ON public.income(user_id, date DESC);
-CREATE INDEX IF NOT EXISTS idx_expenses_user_date ON public.expenses(user_id, date DESC);
-CREATE INDEX IF NOT EXISTS idx_expenses_user_category ON public.expenses(user_id, category_name);
-CREATE INDEX IF NOT EXISTS idx_loans_user ON public.loans(user_id);
-CREATE INDEX IF NOT EXISTS idx_gold_loans_user ON public.gold_loans(user_id);
-CREATE INDEX IF NOT EXISTS idx_savings_user ON public.savings(user_id);
-CREATE INDEX IF NOT EXISTS idx_investments_user ON public.investments(user_id);
-CREATE INDEX IF NOT EXISTS idx_budgets_user_period ON public.budgets(user_id, year, month);
-CREATE INDEX IF NOT EXISTS idx_goals_user ON public.financial_goals(user_id);
-CREATE INDEX IF NOT EXISTS idx_notifications_user ON public.notifications(user_id, is_read);
-
 -- ====================================================================
 -- ROW LEVEL SECURITY (RLS) POLICIES
 -- ====================================================================
 
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.user_permissions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.categories ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.income ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.expenses ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.loans ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.loan_payments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.gold_loans ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.gold_loan_payments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.savings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.investments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.budgets ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.financial_goals ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.recurring_transactions ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
 
--- Helper function to generate RLS policies for user tables
-CREATE OR REPLACE FUNCTION create_user_rls_policy(table_name text) RETURNS void AS $$
+-- Helper function to check if current user is ADMIN
+CREATE OR REPLACE FUNCTION public.is_admin()
+RETURNS BOOLEAN AS $$
 BEGIN
-  EXECUTE format('DROP POLICY IF EXISTS "Users manage own %I" ON public.%I', table_name, table_name);
-  EXECUTE format('CREATE POLICY "Users manage own %I" ON public.%I FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id)', table_name, table_name);
+  RETURN EXISTS (
+    SELECT 1 FROM public.profiles
+    WHERE id = auth.uid() AND role = 'ADMIN'
+  );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Helper function for Admin & User RLS Policies
+CREATE OR REPLACE FUNCTION create_rbac_rls_policy(table_name text) RETURNS void AS $$
+BEGIN
+  EXECUTE format('DROP POLICY IF EXISTS "Access policy for %I" ON public.%I', table_name, table_name);
+  EXECUTE format('CREATE POLICY "Access policy for %I" ON public.%I FOR ALL USING (auth.uid() = user_id OR public.is_admin()) WITH CHECK (auth.uid() = user_id OR public.is_admin())', table_name, table_name);
 END;
 $$ LANGUAGE plpgsql;
 
--- Apply RLS policies to user tables
-SELECT create_user_rls_policy('categories');
-SELECT create_user_rls_policy('income');
-SELECT create_user_rls_policy('expenses');
-SELECT create_user_rls_policy('loans');
-SELECT create_user_rls_policy('loan_payments');
-SELECT create_user_rls_policy('gold_loans');
-SELECT create_user_rls_policy('gold_loan_payments');
-SELECT create_user_rls_policy('savings');
-SELECT create_user_rls_policy('investments');
-SELECT create_user_rls_policy('budgets');
-SELECT create_user_rls_policy('financial_goals');
-SELECT create_user_rls_policy('recurring_transactions');
-SELECT create_user_rls_policy('notifications');
+-- Apply RLS policies to tables
+SELECT create_rbac_rls_policy('categories');
+SELECT create_rbac_rls_policy('income');
+SELECT create_rbac_rls_policy('expenses');
+SELECT create_rbac_rls_policy('loans');
+SELECT create_rbac_rls_policy('loan_payments');
+SELECT create_rbac_rls_policy('gold_loans');
+SELECT create_rbac_rls_policy('savings');
+SELECT create_rbac_rls_policy('investments');
+SELECT create_rbac_rls_policy('budgets');
+SELECT create_rbac_rls_policy('financial_goals');
+SELECT create_rbac_rls_policy('recurring_transactions');
 
--- Profile RLS (special case: id = auth.uid())
-DROP POLICY IF EXISTS "Users manage own profile" ON public.profiles;
-CREATE POLICY "Users manage own profile" ON public.profiles FOR ALL USING (auth.uid() = id) WITH CHECK (auth.uid() = id);
+-- Profile RLS (Users view own profile, Admin manages all profiles)
+DROP POLICY IF EXISTS "Profile RLS" ON public.profiles;
+CREATE POLICY "Profile RLS" ON public.profiles FOR ALL USING (auth.uid() = id OR public.is_admin()) WITH CHECK (auth.uid() = id OR public.is_admin());
+
+-- User Permissions RLS
+DROP POLICY IF EXISTS "Permissions RLS" ON public.user_permissions;
+CREATE POLICY "Permissions RLS" ON public.user_permissions FOR ALL USING (auth.uid() = user_id OR public.is_admin()) WITH CHECK (public.is_admin());
 
 -- ====================================================================
 -- AUTOMATIC PROFILE CREATION TRIGGER ON AUTH SIGNUP
@@ -274,8 +260,16 @@ CREATE POLICY "Users manage own profile" ON public.profiles FOR ALL USING (auth.
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 BEGIN
-  INSERT INTO public.profiles (id, full_name, currency, monthly_income)
-  VALUES (new.id, new.raw_user_meta_data->>'full_name', 'INR', 0);
+  INSERT INTO public.profiles (id, email, full_name, role, is_active, currency, monthly_income)
+  VALUES (
+    new.id,
+    new.email,
+    COALESCE(new.raw_user_meta_data->>'full_name', 'User'),
+    COALESCE(new.raw_user_meta_data->>'role', 'USER'),
+    true,
+    'INR',
+    0
+  );
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;

@@ -7,7 +7,7 @@ interface LoginPageProps {
 }
 
 export const LoginPage: React.FC<LoginPageProps> = ({ onSuccess }) => {
-  const { signIn, resetPassword, seedDemoData } = useAuth();
+  const { signIn, resetPassword } = useAuth();
   
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -64,7 +64,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSuccess }) => {
 
   const handleDemoAccess = async () => {
     setLoading(true);
-    await seedDemoData();
     await signIn('admin@myfinance.app', 'demo1234');
     setLoading(false);
     if (onSuccess) onSuccess();

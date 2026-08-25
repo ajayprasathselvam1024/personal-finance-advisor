@@ -4,7 +4,7 @@ import { Layout } from './components/layout/Layout';
 import { AuthGuard } from './components/auth/AuthGuard';
 import { LoginPage } from './components/auth/LoginPage';
 import { ResetPasswordPage } from './components/auth/ResetPasswordPage';
-import { OnboardingWizard } from './components/onboarding/OnboardingWizard';
+import { AccessDeniedPage } from './components/auth/AccessDeniedPage';
 
 import { DashboardPage } from './pages/DashboardPage';
 import { IncomePage } from './pages/IncomePage';
@@ -24,6 +24,7 @@ import { HealthScorePage } from './pages/HealthScorePage';
 import { ReportsPage } from './pages/ReportsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { RecurringPage } from './pages/RecurringPage';
+import { UserManagementPage } from './pages/UserManagementPage';
 
 import { dataService } from './services/dataService';
 import type {
@@ -35,6 +36,7 @@ import type {
   InvestmentItem,
   FinancialGoal,
   Budget,
+  PermissionKey,
 } from './types';
 import {
   calculateFinancialSummary,
@@ -43,9 +45,8 @@ import {
 import { generateAdvisorInsights } from './services/advisorService';
 
 const MainApp: React.FC = () => {
-  const { user, loading, profile } = useAuth();
+  const { user, loading, profile, hasPermission, isAdmin } = useAuth();
   const [activePage, setActivePage] = useState('dashboard');
-  const [showOnboarding, setShowOnboarding] = useState(false);
 
   // Data States
   const [incomes, setIncomes] = useState<IncomeItem[]>([]);
@@ -83,14 +84,6 @@ const MainApp: React.FC = () => {
       setInvestments(inv);
       setGoals(gls);
       setBudgets(bdg);
-
-      // Check onboarding criteria
-      if (inc.length === 0 && exp.length === 0 && lns.length === 0) {
-        const onboardingDone = localStorage.getItem('fin_onboarding_done');
-        if (!onboardingDone) {
-          setShowOnboarding(true);
-        }
-      }
     } catch (e) {
       console.error('Error fetching financial data:', e);
     } finally {
@@ -99,30 +92,32 @@ const MainApp: React.FC = () => {
   };
 
   useEffect(() => {
-    loadAllData();
+    if (user) {
+      loadAllData();
+    }
   }, [user]);
 
   if (isResetRoute) {
     return <ResetPasswordPage onSuccess={() => { window.location.href = '/'; }} />;
   }
 
-  if (loading || dataLoading) {
+  if (loading || (user && dataLoading)) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-950 text-white">
+      <div className="min-h-screen flex items-center justify-center bg-slate-950 text-white font-sans">
         <div className="flex flex-col items-center gap-3">
           <div className="h-10 w-10 animate-spin rounded-full border-4 border-blue-500 border-t-transparent" />
-          <p className="text-xs font-semibold text-slate-400">Loading My Finance Engine...</p>
+          <p className="text-xs font-semibold text-slate-400">Authenticating & Loading My Finance...</p>
         </div>
       </div>
     );
   }
 
-  if (activePage === 'login') {
+  if (!user && activePage !== 'login') {
     return <LoginPage onSuccess={() => setActivePage('dashboard')} />;
   }
 
-  if (showOnboarding || activePage === 'onboarding') {
-    return <OnboardingWizard onComplete={() => { setShowOnboarding(false); setActivePage('dashboard'); loadAllData(); }} />;
+  if (activePage === 'login') {
+    return <LoginPage onSuccess={() => setActivePage('dashboard')} />;
   }
 
   // Live Dynamic Financial Calculations
@@ -133,7 +128,7 @@ const MainApp: React.FC = () => {
     goldLoans,
     savings,
     investments,
-    profile?.monthly_income || 91000
+    profile?.monthly_income || 0
   );
 
   const healthScore = calculateFinancialHealthScore(summary, loans, savings, goals);
@@ -149,48 +144,106 @@ const MainApp: React.FC = () => {
     budgets
   );
 
+  // Helper for Route Permissions
+  const canAccess = (permKey?: PermissionKey, adminOnly: boolean = false): boolean => {
+    if (adminOnly) return isAdmin;
+    if (permKey) return hasPermission(permKey);
+    return true;
+  };
+
   return (
     <AuthGuard>
       <Layout activePage={activePage} onNavigate={setActivePage} onRefreshData={loadAllData}>
         {activePage === 'dashboard' && (
-          <DashboardPage
-            summary={summary}
-            healthScore={healthScore}
-            advisorInsights={advisorInsights}
-            incomes={incomes}
-            expenses={expenses}
-            loans={loans}
-            goldLoans={goldLoans}
-            savings={savings}
-            investments={investments}
-            goals={goals}
-            onNavigate={setActivePage}
-          />
+          canAccess('view_dashboard') ? (
+            <DashboardPage
+              summary={summary}
+              healthScore={healthScore}
+              advisorInsights={advisorInsights}
+              incomes={incomes}
+              expenses={expenses}
+              loans={loans}
+              goldLoans={goldLoans}
+              savings={savings}
+              investments={investments}
+              goals={goals}
+              onNavigate={setActivePage}
+            />
+          ) : <AccessDeniedPage />
         )}
-        {activePage === 'income' && <IncomePage incomes={incomes} onRefresh={loadAllData} />}
-        {activePage === 'expenses' && <ExpensesPage expenses={expenses} onRefresh={loadAllData} />}
-        {activePage === 'categories' && <CategoryAnalysisPage expenses={expenses} />}
-        {activePage === 'transactions' && <TransactionsPage incomes={incomes} expenses={expenses} />}
-        {activePage === 'loans' && <LoansPage loans={loans} onRefresh={loadAllData} />}
-        {activePage === 'gold-loans' && <GoldLoansPage goldLoans={goldLoans} onRefresh={loadAllData} />}
-        {activePage === 'debt-payoff' && <DebtPayoffPage loans={loans} goldLoans={goldLoans} />}
-        {activePage === 'what-if' && <WhatIfPage summary={summary} healthScore={healthScore} />}
-        {activePage === 'savings' && <SavingsPage savings={savings} onRefresh={loadAllData} />}
-        {activePage === 'investments' && <InvestmentsPage investments={investments} onRefresh={loadAllData} />}
-        {activePage === 'budgets' && <BudgetsPage budgets={budgets} expenses={expenses} onRefresh={loadAllData} />}
-        {activePage === 'goals' && <GoalsPage goals={goals} onRefresh={loadAllData} />}
-        {activePage === 'recurring' && <RecurringPage onRefresh={loadAllData} />}
+
+        {activePage === 'income' && (
+          canAccess('view_income') ? <IncomePage incomes={incomes} onRefresh={loadAllData} /> : <AccessDeniedPage />
+        )}
+
+        {activePage === 'expenses' && (
+          canAccess('view_expenses') ? <ExpensesPage expenses={expenses} onRefresh={loadAllData} /> : <AccessDeniedPage />
+        )}
+
+        {activePage === 'categories' && (
+          canAccess('view_expenses') ? <CategoryAnalysisPage expenses={expenses} /> : <AccessDeniedPage />
+        )}
+
+        {activePage === 'transactions' && (
+          canAccess('view_expenses') ? <TransactionsPage incomes={incomes} expenses={expenses} /> : <AccessDeniedPage />
+        )}
+
+        {activePage === 'loans' && (
+          canAccess('view_loans') ? <LoansPage loans={loans} onRefresh={loadAllData} /> : <AccessDeniedPage />
+        )}
+
+        {activePage === 'gold-loans' && (
+          canAccess('view_gold_loans') ? <GoldLoansPage goldLoans={goldLoans} onRefresh={loadAllData} /> : <AccessDeniedPage />
+        )}
+
+        {activePage === 'debt-payoff' && (
+          canAccess('view_loans') ? <DebtPayoffPage loans={loans} goldLoans={goldLoans} /> : <AccessDeniedPage />
+        )}
+
+        {activePage === 'what-if' && (
+          canAccess('view_dashboard') ? <WhatIfPage summary={summary} healthScore={healthScore} /> : <AccessDeniedPage />
+        )}
+
+        {activePage === 'savings' && (
+          canAccess('view_savings') ? <SavingsPage savings={savings} onRefresh={loadAllData} /> : <AccessDeniedPage />
+        )}
+
+        {activePage === 'investments' && (
+          canAccess('view_investments') ? <InvestmentsPage investments={investments} onRefresh={loadAllData} /> : <AccessDeniedPage />
+        )}
+
+        {activePage === 'budgets' && (
+          canAccess('manage_budgets') ? <BudgetsPage budgets={budgets} expenses={expenses} onRefresh={loadAllData} /> : <AccessDeniedPage />
+        )}
+
+        {activePage === 'goals' && (
+          canAccess('manage_goals') ? <GoalsPage goals={goals} onRefresh={loadAllData} /> : <AccessDeniedPage />
+        )}
+
+        {activePage === 'recurring' && (
+          canAccess('view_expenses') ? <RecurringPage onRefresh={loadAllData} /> : <AccessDeniedPage />
+        )}
+
         {activePage === 'advisor' && (
-          <FinancialAdvisorPage insights={advisorInsights} summary={summary} onNavigate={setActivePage} />
+          canAccess('view_advisor') ? (
+            <FinancialAdvisorPage insights={advisorInsights} summary={summary} onNavigate={setActivePage} />
+          ) : <AccessDeniedPage />
         )}
-        {activePage === 'health-score' && <HealthScorePage healthScore={healthScore} onNavigate={setActivePage} />}
+
+        {activePage === 'health-score' && (
+          canAccess('view_dashboard') ? <HealthScorePage healthScore={healthScore} onNavigate={setActivePage} /> : <AccessDeniedPage />
+        )}
+
         {activePage === 'reports' && (
-          <ReportsPage
-            incomes={incomes}
-            expenses={expenses}
-            loans={loans}
-          />
+          canAccess('view_reports') ? (
+            <ReportsPage incomes={incomes} expenses={expenses} loans={loans} />
+          ) : <AccessDeniedPage />
         )}
+
+        {activePage === 'users' && (
+          isAdmin ? <UserManagementPage /> : <AccessDeniedPage />
+        )}
+
         {activePage === 'settings' && <SettingsPage onRefresh={loadAllData} />}
       </Layout>
     </AuthGuard>

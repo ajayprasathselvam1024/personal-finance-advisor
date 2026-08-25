@@ -1,8 +1,9 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import type { User, Session } from '@supabase/supabase-js';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
-import type { UserProfile } from '../types';
+import type { UserProfile, PermissionKey } from '../types';
 import { dataService } from '../services/dataService';
+import { userService } from '../services/userService';
 
 interface AuthContextType {
   user: User | null;
@@ -10,13 +11,13 @@ interface AuthContextType {
   profile: UserProfile | null;
   loading: boolean;
   isAdmin: boolean;
-  isDemoMode: boolean;
+  isDeactivated: boolean;
+  hasPermission: (permissionKey: PermissionKey) => boolean;
   signIn: (email: string, password: string, rememberMe?: boolean) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
   resetPassword: (email: string) => Promise<{ error: Error | null }>;
   updatePassword: (newPassword: string) => Promise<{ error: Error | null }>;
   refreshProfile: () => Promise<void>;
-  seedDemoData: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -27,14 +28,38 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
 
-  // In demo mode or when profile role is ADMIN (default), isAdmin is true
-  const isAdmin = !isSupabaseConfigured || (profile ? profile.role === 'ADMIN' || !profile.role : true);
-  const isDemoMode = !isSupabaseConfigured || !user;
+  // Role Checks
+  const isAdmin = !isSupabaseConfigured || (profile ? profile.role === 'ADMIN' : true);
+  const isDeactivated = profile ? profile.is_active === false : false;
 
-  const loadProfile = async () => {
+  const hasPermission = (permissionKey: PermissionKey): boolean => {
+    if (!isSupabaseConfigured) return true;
+    if (isAdmin) return true;
+    if (isDeactivated) return false;
+    return profile?.permissions?.includes(permissionKey) ?? false;
+  };
+
+  const loadProfile = async (targetUser?: User | null) => {
     try {
+      const activeUser = targetUser || user;
+      if (!activeUser && isSupabaseConfigured) {
+        setProfile(null);
+        return;
+      }
+
       const p = await dataService.getProfile();
-      setProfile(p);
+      if (p) {
+        // Load user permissions
+        if (isSupabaseConfigured && activeUser) {
+          const usersList = await userService.getUsers();
+          const found = usersList.find((u) => u.id === activeUser.id);
+          if (found) {
+            setProfile(found);
+            return;
+          }
+        }
+        setProfile(p);
+      }
     } catch (e) {
       console.error('Error loading profile:', e);
     }
@@ -50,6 +75,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           if (mounted) {
             setSession(initialSession);
             setUser(initialSession?.user || null);
+            if (initialSession?.user) {
+              await loadProfile(initialSession.user);
+            }
           }
         } catch (err) {
           console.warn('Supabase getSession error:', err);
@@ -59,18 +87,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           if (mounted) {
             setSession(newSession);
             setUser(newSession?.user || null);
-            await loadProfile();
+            if (newSession?.user) {
+              await loadProfile(newSession.user);
+            } else {
+              setProfile(null);
+            }
           }
         });
 
-        await loadProfile();
         if (mounted) setLoading(false);
 
         return () => {
           authListener.subscription.unsubscribe();
         };
       } else {
-        // Local Sandbox / Demo Mode
+        // Local Sandbox Mode
         await loadProfile();
         if (mounted) setLoading(false);
       }
@@ -85,9 +116,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const signIn = async (email: string, password: string, _rememberMe: boolean = true) => {
     if (!isSupabaseConfigured) {
-      const mockUser = { id: `demo-user`, email } as User;
+      const mockUser = { id: `admin-1`, email } as User;
       setUser(mockUser);
-      await loadProfile();
+      await loadProfile(mockUser);
       return { error: null };
     }
 
@@ -98,7 +129,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     if (!error && data.user) {
       setUser(data.user);
-      await loadProfile();
+      await loadProfile(data.user);
     }
     return { error: error as Error | null };
   };
@@ -131,11 +162,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return { error: error as Error | null };
   };
 
-  const seedDemoData = async () => {
-    await dataService.seedDemoData();
-    await loadProfile();
-  };
-
   return (
     <AuthContext.Provider
       value={{
@@ -144,13 +170,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         profile,
         loading,
         isAdmin,
-        isDemoMode,
+        isDeactivated,
+        hasPermission,
         signIn,
         signOut,
         resetPassword,
         updatePassword,
-        refreshProfile: loadProfile,
-        seedDemoData,
+        refreshProfile: () => loadProfile(user),
       }}
     >
       {children}

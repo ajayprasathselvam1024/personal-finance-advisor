@@ -66,14 +66,40 @@ export type InvestmentType =
   | 'Gold'
   | 'Other';
 
+export type PermissionKey =
+  | 'view_dashboard'
+  | 'view_income'
+  | 'add_income'
+  | 'edit_income'
+  | 'delete_income'
+  | 'view_expenses'
+  | 'add_expenses'
+  | 'edit_expenses'
+  | 'delete_expenses'
+  | 'view_loans'
+  | 'manage_loans'
+  | 'view_gold_loans'
+  | 'manage_gold_loans'
+  | 'view_savings'
+  | 'manage_savings'
+  | 'view_investments'
+  | 'manage_investments'
+  | 'view_reports'
+  | 'view_advisor'
+  | 'manage_goals'
+  | 'manage_budgets';
+
 export interface UserProfile {
   id: string;
+  email?: string;
   full_name: string | null;
   currency: string;
   monthly_income: number;
-  role?: 'ADMIN' | 'USER';
+  role: 'ADMIN' | 'USER';
+  is_active: boolean;
+  permissions?: PermissionKey[];
   theme: 'light' | 'dark' | 'system';
-  notification_preferences: {
+  notification_preferences?: {
     email: boolean;
     inApp: boolean;
     dueReminders: boolean;

@@ -2,7 +2,11 @@ import React from 'react';
 import { ShieldAlert, LogOut, Lock } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
-export const AccessDeniedPage: React.FC = () => {
+interface AccessDeniedPageProps {
+  message?: string;
+}
+
+export const AccessDeniedPage: React.FC<AccessDeniedPageProps> = ({ message }) => {
   const { signOut, user } = useAuth();
 
   return (
@@ -16,7 +20,7 @@ export const AccessDeniedPage: React.FC = () => {
         <div>
           <h1 className="text-xl font-bold text-white">Access Denied</h1>
           <p className="text-xs text-slate-400 mt-2">
-            This is a private personal finance portal. Only authorized Admin accounts are allowed access.
+            {message || 'This is a private personal finance portal. You do not have authorization to view this module.'}
           </p>
           {user?.email && (
             <div className="mt-3 inline-block rounded-xl bg-slate-800/80 px-3 py-1.5 text-[11px] font-mono text-slate-300 border border-slate-700">

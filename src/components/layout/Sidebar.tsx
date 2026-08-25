@@ -18,7 +18,10 @@ import {
   Settings,
   Scale,
   RefreshCw,
+  UserPlus,
 } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
+import type { PermissionKey } from '../../types';
 
 interface SidebarProps {
   activePage: string;
@@ -26,33 +29,50 @@ interface SidebarProps {
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ activePage, onNavigate }) => {
-  const navItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, section: 'Overview' },
-    { id: 'advisor', label: 'Financial Advisor', icon: BrainCircuit, section: 'Overview', badge: 'AI' },
-    { id: 'health-score', label: 'Health Score', icon: Activity, section: 'Overview' },
+  const { hasPermission, isAdmin } = useAuth();
 
-    { id: 'income', label: 'Income Track', icon: ArrowUpRight, section: 'Money Flow' },
-    { id: 'expenses', label: 'Expenses', icon: ArrowDownLeft, section: 'Money Flow' },
-    { id: 'categories', label: 'Category Analysis', icon: PieChartIcon, section: 'Money Flow' },
-    { id: 'transactions', label: 'Transactions', icon: Receipt, section: 'Money Flow' },
+  const navItems: {
+    id: string;
+    label: string;
+    icon: any;
+    section: string;
+    badge?: string;
+    perm?: PermissionKey;
+    adminOnly?: boolean;
+  }[] = [
+    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, section: 'Overview', perm: 'view_dashboard' },
+    { id: 'advisor', label: 'Financial Advisor', icon: BrainCircuit, section: 'Overview', badge: 'AI', perm: 'view_advisor' },
+    { id: 'health-score', label: 'Health Score', icon: Activity, section: 'Overview', perm: 'view_dashboard' },
 
-    { id: 'loans', label: 'Loans & EMIs', icon: CreditCard, section: 'Debt Management' },
-    { id: 'gold-loans', label: 'Gold Loans', icon: Coins, section: 'Debt Management' },
-    { id: 'debt-payoff', label: 'Debt Payoff Planner', icon: Flame, section: 'Debt Management' },
-    { id: 'what-if', label: 'What-If Planner', icon: Scale, section: 'Debt Management' },
+    { id: 'income', label: 'Income Track', icon: ArrowUpRight, section: 'Money Flow', perm: 'view_income' },
+    { id: 'expenses', label: 'Expenses', icon: ArrowDownLeft, section: 'Money Flow', perm: 'view_expenses' },
+    { id: 'categories', label: 'Category Analysis', icon: PieChartIcon, section: 'Money Flow', perm: 'view_expenses' },
+    { id: 'transactions', label: 'Transactions', icon: Receipt, section: 'Money Flow', perm: 'view_expenses' },
 
-    { id: 'savings', label: 'Savings', icon: PiggyBank, section: 'Wealth & Assets' },
-    { id: 'investments', label: 'Investments', icon: TrendingUp, section: 'Wealth & Assets' },
-    { id: 'budgets', label: 'Monthly Budgets', icon: Calculator, section: 'Planning' },
-    { id: 'goals', label: 'Financial Goals', icon: Target, section: 'Planning' },
-    { id: 'recurring', label: 'Recurring Schedules', icon: RefreshCw, section: 'Planning' },
+    { id: 'loans', label: 'Loans & EMIs', icon: CreditCard, section: 'Debt Management', perm: 'view_loans' },
+    { id: 'gold-loans', label: 'Gold Loans', icon: Coins, section: 'Debt Management', perm: 'view_gold_loans' },
+    { id: 'debt-payoff', label: 'Debt Payoff Planner', icon: Flame, section: 'Debt Management', perm: 'view_loans' },
+    { id: 'what-if', label: 'What-If Planner', icon: Scale, section: 'Debt Management', perm: 'view_dashboard' },
 
-    { id: 'reports', label: 'Reports & Analytics', icon: FileText, section: 'Analytics' },
+    { id: 'savings', label: 'Savings', icon: PiggyBank, section: 'Wealth & Assets', perm: 'view_savings' },
+    { id: 'investments', label: 'Investments', icon: TrendingUp, section: 'Wealth & Assets', perm: 'view_investments' },
+    { id: 'budgets', label: 'Monthly Budgets', icon: Calculator, section: 'Planning', perm: 'manage_budgets' },
+    { id: 'goals', label: 'Financial Goals', icon: Target, section: 'Planning', perm: 'manage_goals' },
+    { id: 'recurring', label: 'Recurring Schedules', icon: RefreshCw, section: 'Planning', perm: 'view_expenses' },
+
+    { id: 'reports', label: 'Reports & Analytics', icon: FileText, section: 'Analytics', perm: 'view_reports' },
+    { id: 'users', label: 'User Management', icon: UserPlus, section: 'Administration', adminOnly: true },
     { id: 'settings', label: 'Settings', icon: Settings, section: 'Analytics' },
   ];
 
-  // Group items by section
-  const sections = Array.from(new Set(navItems.map((item) => item.section)));
+  // Filter items based on permissions
+  const visibleItems = navItems.filter((item) => {
+    if (item.adminOnly) return isAdmin;
+    if (item.perm) return hasPermission(item.perm);
+    return true;
+  });
+
+  const sections = Array.from(new Set(visibleItems.map((item) => item.section)));
 
   return (
     <aside className="hidden lg:flex w-64 flex-col border-r border-slate-200/80 bg-white dark:border-slate-800/80 dark:bg-slate-900 h-[calc(100vh-4rem)] sticky top-16 overflow-y-auto p-4 select-none">
@@ -63,7 +83,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activePage, onNavigate }) => {
               {section}
             </h3>
             <div className="mt-1.5 space-y-1">
-              {navItems
+              {visibleItems
                 .filter((item) => item.section === section)
                 .map((item) => {
                   const Icon = item.icon;

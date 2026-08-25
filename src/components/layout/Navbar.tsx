@@ -25,7 +25,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onNavigate,
   activePage: _activePage,
 }) => {
-  const { profile, signOut, isDemoMode, seedDemoData } = useAuth();
+  const { profile, signOut } = useAuth();
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
@@ -96,16 +96,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           <span>Add Expense</span>
         </button>
 
-        {/* Demo Seed Banner Button if needed */}
-        {isDemoMode && (
-          <button
-            onClick={() => seedDemoData()}
-            title="Load Example Demo Financial Data"
-            className="hidden items-center gap-1.5 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs font-medium text-amber-700 dark:text-amber-300 hover:bg-amber-500/20 md:flex"
-          >
-            <span>Reset Demo Data</span>
-          </button>
-        )}
+
 
         {/* Theme Toggle */}
         <button
