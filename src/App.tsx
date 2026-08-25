@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { Layout } from './components/layout/Layout';
-import { AuthModal } from './components/auth/AuthModal';
+import { AuthGuard } from './components/auth/AuthGuard';
+import { LoginPage } from './components/auth/LoginPage';
+import { ResetPasswordPage } from './components/auth/ResetPasswordPage';
 import { OnboardingWizard } from './components/onboarding/OnboardingWizard';
 
 import { DashboardPage } from './pages/DashboardPage';
@@ -45,7 +47,7 @@ const MainApp: React.FC = () => {
   const [activePage, setActivePage] = useState('dashboard');
   const [showOnboarding, setShowOnboarding] = useState(false);
 
-  // App Data States
+  // Data States
   const [incomes, setIncomes] = useState<IncomeItem[]>([]);
   const [expenses, setExpenses] = useState<ExpenseItem[]>([]);
   const [loans, setLoans] = useState<Loan[]>([]);
@@ -56,9 +58,13 @@ const MainApp: React.FC = () => {
   const [budgets, setBudgets] = useState<Budget[]>([]);
   const [dataLoading, setDataLoading] = useState(true);
 
+  // Reset Password route detection
+  const isResetRoute = window.location.pathname.includes('/reset-password') || window.location.hash.includes('type=recovery');
+
   const loadAllData = async () => {
+    setDataLoading(true);
     try {
-      const [inc, exp, ln, gl, sav, inv, g, b] = await Promise.all([
+      const [inc, exp, lns, gLns, svg, inv, gls, bdg] = await Promise.all([
         dataService.getIncomes(),
         dataService.getExpenses(),
         dataService.getLoans(),
@@ -71,12 +77,20 @@ const MainApp: React.FC = () => {
 
       setIncomes(inc);
       setExpenses(exp);
-      setLoans(ln);
-      setGoldLoans(gl);
-      setSavings(sav);
+      setLoans(lns);
+      setGoldLoans(gLns);
+      setSavings(svg);
       setInvestments(inv);
-      setGoals(g);
-      setBudgets(b);
+      setGoals(gls);
+      setBudgets(bdg);
+
+      // Check onboarding criteria
+      if (inc.length === 0 && exp.length === 0 && lns.length === 0) {
+        const onboardingDone = localStorage.getItem('fin_onboarding_done');
+        if (!onboardingDone) {
+          setShowOnboarding(true);
+        }
+      }
     } catch (e) {
       console.error('Error fetching financial data:', e);
     } finally {
@@ -88,19 +102,23 @@ const MainApp: React.FC = () => {
     loadAllData();
   }, [user]);
 
+  if (isResetRoute) {
+    return <ResetPasswordPage onSuccess={() => { window.location.href = '/'; }} />;
+  }
+
   if (loading || dataLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-950 text-white">
         <div className="flex flex-col items-center gap-3">
           <div className="h-10 w-10 animate-spin rounded-full border-4 border-blue-500 border-t-transparent" />
-          <p className="text-xs font-semibold text-slate-400">Loading WealthWise Engine...</p>
+          <p className="text-xs font-semibold text-slate-400">Loading My Finance Engine...</p>
         </div>
       </div>
     );
   }
 
-  if (activePage === 'auth') {
-    return <AuthModal />;
+  if (activePage === 'login') {
+    return <LoginPage onSuccess={() => setActivePage('dashboard')} />;
   }
 
   if (showOnboarding || activePage === 'onboarding') {
@@ -132,58 +150,50 @@ const MainApp: React.FC = () => {
   );
 
   return (
-    <Layout activePage={activePage} onNavigate={setActivePage} onRefreshData={loadAllData}>
-      {activePage === 'dashboard' && (
-        <DashboardPage
-          summary={summary}
-          healthScore={healthScore}
-          advisorInsights={advisorInsights}
-          incomes={incomes}
-          expenses={expenses}
-          loans={loans}
-          goldLoans={goldLoans}
-          savings={savings}
-          investments={investments}
-          goals={goals}
-          onNavigate={setActivePage}
-          onOpenAddExpense={() => {}}
-        />
-      )}
-
-      {activePage === 'income' && <IncomePage incomes={incomes} onRefresh={loadAllData} />}
-      {activePage === 'expenses' && (
-        <ExpensesPage
-          expenses={expenses}
-          onRefresh={loadAllData}
-          onOpenAddExpense={() => {}}
-        />
-      )}
-      {activePage === 'categories' && <CategoryAnalysisPage expenses={expenses} />}
-      {activePage === 'transactions' && <TransactionsPage incomes={incomes} expenses={expenses} />}
-      {activePage === 'loans' && <LoansPage loans={loans} monthlyIncome={summary.monthlyIncome} onRefresh={loadAllData} />}
-      {activePage === 'gold-loans' && <GoldLoansPage goldLoans={goldLoans} onRefresh={loadAllData} />}
-      {activePage === 'debt-payoff' && <DebtPayoffPage loans={loans} goldLoans={goldLoans} />}
-      {activePage === 'what-if' && <WhatIfPage summary={summary} healthScore={healthScore} loans={loans} />}
-      {activePage === 'savings' && (
-        <SavingsPage savings={savings} monthlyExpenses={summary.monthlyExpenses} onRefresh={loadAllData} />
-      )}
-      {activePage === 'investments' && <InvestmentsPage investments={investments} onRefresh={loadAllData} />}
-      {activePage === 'budgets' && <BudgetsPage budgets={budgets} expenses={expenses} onRefresh={loadAllData} />}
-      {activePage === 'goals' && <GoalsPage goals={goals} onRefresh={loadAllData} />}
-      {activePage === 'recurring' && <RecurringPage onRefresh={loadAllData} />}
-      {activePage === 'advisor' && (
-        <FinancialAdvisorPage insights={advisorInsights} summary={summary} onNavigate={setActivePage} />
-      )}
-      {activePage === 'health-score' && <HealthScorePage healthScore={healthScore} onNavigate={setActivePage} />}
-      {activePage === 'reports' && (
-        <ReportsPage
-          incomes={incomes}
-          expenses={expenses}
-          loans={loans}
-        />
-      )}
-      {activePage === 'settings' && <SettingsPage onRefresh={loadAllData} />}
-    </Layout>
+    <AuthGuard>
+      <Layout activePage={activePage} onNavigate={setActivePage} onRefreshData={loadAllData}>
+        {activePage === 'dashboard' && (
+          <DashboardPage
+            summary={summary}
+            healthScore={healthScore}
+            advisorInsights={advisorInsights}
+            incomes={incomes}
+            expenses={expenses}
+            loans={loans}
+            goldLoans={goldLoans}
+            savings={savings}
+            investments={investments}
+            goals={goals}
+            onNavigate={setActivePage}
+          />
+        )}
+        {activePage === 'income' && <IncomePage incomes={incomes} onRefresh={loadAllData} />}
+        {activePage === 'expenses' && <ExpensesPage expenses={expenses} onRefresh={loadAllData} />}
+        {activePage === 'categories' && <CategoryAnalysisPage expenses={expenses} />}
+        {activePage === 'transactions' && <TransactionsPage incomes={incomes} expenses={expenses} />}
+        {activePage === 'loans' && <LoansPage loans={loans} onRefresh={loadAllData} />}
+        {activePage === 'gold-loans' && <GoldLoansPage goldLoans={goldLoans} onRefresh={loadAllData} />}
+        {activePage === 'debt-payoff' && <DebtPayoffPage loans={loans} goldLoans={goldLoans} />}
+        {activePage === 'what-if' && <WhatIfPage summary={summary} healthScore={healthScore} />}
+        {activePage === 'savings' && <SavingsPage savings={savings} onRefresh={loadAllData} />}
+        {activePage === 'investments' && <InvestmentsPage investments={investments} onRefresh={loadAllData} />}
+        {activePage === 'budgets' && <BudgetsPage budgets={budgets} expenses={expenses} onRefresh={loadAllData} />}
+        {activePage === 'goals' && <GoalsPage goals={goals} onRefresh={loadAllData} />}
+        {activePage === 'recurring' && <RecurringPage onRefresh={loadAllData} />}
+        {activePage === 'advisor' && (
+          <FinancialAdvisorPage insights={advisorInsights} summary={summary} onNavigate={setActivePage} />
+        )}
+        {activePage === 'health-score' && <HealthScorePage healthScore={healthScore} onNavigate={setActivePage} />}
+        {activePage === 'reports' && (
+          <ReportsPage
+            incomes={incomes}
+            expenses={expenses}
+            loans={loans}
+          />
+        )}
+        {activePage === 'settings' && <SettingsPage onRefresh={loadAllData} />}
+      </Layout>
+    </AuthGuard>
   );
 };
 

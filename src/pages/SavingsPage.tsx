@@ -6,8 +6,8 @@ import { formatINR, formatDate } from '../utils/formatters';
 
 interface SavingsPageProps {
   savings: SavingsItem[];
-  monthlyExpenses: number;
   onRefresh: () => void;
+  monthlyExpenses?: number;
 }
 
 const SAVINGS_TYPES: SavingsType[] = [
@@ -20,7 +20,11 @@ const SAVINGS_TYPES: SavingsType[] = [
   'Other',
 ];
 
-export const SavingsPage: React.FC<SavingsPageProps> = ({ savings, monthlyExpenses, onRefresh }) => {
+export const SavingsPage: React.FC<SavingsPageProps> = ({
+  savings,
+  monthlyExpenses = 50000,
+  onRefresh,
+}) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<SavingsItem | null>(null);
 

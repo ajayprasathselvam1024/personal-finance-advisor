@@ -46,8 +46,22 @@ export const WhatIfPage: React.FC<WhatIfPageProps> = ({ summary, healthScore }) 
         </div>
       </div>
 
-      {/* Interactive Controls */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+      {summary.monthlyIncome === 0 && summary.monthlyExpenses === 0 ? (
+        <div className="rounded-3xl border border-slate-200/80 bg-white p-12 text-center shadow-sm dark:border-slate-800 dark:bg-slate-900 space-y-4">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600 dark:bg-indigo-950 dark:text-indigo-400">
+            <Scale className="h-8 w-8" />
+          </div>
+          <div>
+            <h3 className="text-lg font-bold text-slate-900 dark:text-white">Add Income & Expenses to simulate scenarios</h3>
+            <p className="text-xs text-slate-500 max-w-sm mx-auto mt-1">
+              Add your monthly income and expenses to run real-time What-If simulations on cash flow, surplus, and health score deltas.
+            </p>
+          </div>
+        </div>
+      ) : (
+        <>
+          {/* Interactive Controls */}
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         {/* Scenario Controls */}
         <div className="rounded-3xl border border-slate-200/80 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900 space-y-4">
           <h3 className="text-sm font-bold text-slate-900 dark:text-white pb-2 border-b border-slate-100 dark:border-slate-800">
@@ -127,6 +141,8 @@ export const WhatIfPage: React.FC<WhatIfPageProps> = ({ summary, healthScore }) 
           </div>
         </div>
       </div>
+        </>
+      )}
     </div>
   );
 };

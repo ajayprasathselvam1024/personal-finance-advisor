@@ -71,6 +71,7 @@ export interface UserProfile {
   full_name: string | null;
   currency: string;
   monthly_income: number;
+  role?: 'ADMIN' | 'USER';
   theme: 'light' | 'dark' | 'system';
   notification_preferences: {
     email: boolean;

@@ -7,7 +7,7 @@ import { formatINR } from '../utils/formatters';
 
 interface LoansPageProps {
   loans: Loan[];
-  monthlyIncome: number;
+  monthlyIncome?: number;
   onRefresh: () => void;
 }
 
@@ -20,7 +20,11 @@ const LOAN_TYPES: LoanType[] = [
   'Other',
 ];
 
-export const LoansPage: React.FC<LoansPageProps> = ({ loans, monthlyIncome, onRefresh }) => {
+export const LoansPage: React.FC<LoansPageProps> = ({
+  loans,
+  monthlyIncome = 91000,
+  onRefresh,
+}) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingLoan, setEditingLoan] = useState<Loan | null>(null);
 

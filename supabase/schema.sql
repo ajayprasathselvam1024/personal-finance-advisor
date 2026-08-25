@@ -10,6 +10,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE TABLE IF NOT EXISTS public.profiles (
   id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   full_name TEXT,
+  role TEXT NOT NULL DEFAULT 'ADMIN' CHECK (role IN ('ADMIN', 'USER')),
   currency TEXT DEFAULT 'INR',
   monthly_income NUMERIC DEFAULT 0 CHECK (monthly_income >= 0),
   theme TEXT DEFAULT 'system' CHECK (theme IN ('light', 'dark', 'system')),

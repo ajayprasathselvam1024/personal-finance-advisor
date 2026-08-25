@@ -7,7 +7,7 @@ import { formatINR, formatDate } from '../utils/formatters';
 interface ExpensesPageProps {
   expenses: ExpenseItem[];
   onRefresh: () => void;
-  onOpenAddExpense: () => void;
+  onOpenAddExpense?: () => void;
 }
 
 export const ExpensesPage: React.FC<ExpensesPageProps> = ({

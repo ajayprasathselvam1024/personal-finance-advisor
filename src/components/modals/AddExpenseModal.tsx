@@ -108,6 +108,7 @@ export const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
               </span>
               <input
                 type="number"
+                inputMode="decimal"
                 step="any"
                 required
                 autoFocus

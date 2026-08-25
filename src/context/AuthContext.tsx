@@ -9,11 +9,12 @@ interface AuthContextType {
   session: Session | null;
   profile: UserProfile | null;
   loading: boolean;
+  isAdmin: boolean;
   isDemoMode: boolean;
-  signUp: (email: string, password: string, fullName: string) => Promise<{ error: Error | null }>;
-  signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
+  signIn: (email: string, password: string, rememberMe?: boolean) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
   resetPassword: (email: string) => Promise<{ error: Error | null }>;
+  updatePassword: (newPassword: string) => Promise<{ error: Error | null }>;
   refreshProfile: () => Promise<void>;
   seedDemoData: () => Promise<void>;
 }
@@ -25,6 +26,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
+
+  // In demo mode or when profile role is ADMIN (default), isAdmin is true
+  const isAdmin = !isSupabaseConfigured || (profile ? profile.role === 'ADMIN' || !profile.role : true);
   const isDemoMode = !isSupabaseConfigured || !user;
 
   const loadProfile = async () => {
@@ -66,7 +70,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           authListener.subscription.unsubscribe();
         };
       } else {
-        // Local Demo Mode
+        // Local Sandbox / Demo Mode
         await loadProfile();
         if (mounted) setLoading(false);
       }
@@ -79,32 +83,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, []);
 
-  const signUp = async (email: string, password: string, fullName: string) => {
-    if (!isSupabaseConfigured) {
-      // Mock signup for demo mode
-      const mockUser = { id: `demo-${Date.now()}`, email } as User;
-      setUser(mockUser);
-      await dataService.updateProfile({ full_name: fullName });
-      await loadProfile();
-      return { error: null };
-    }
-
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: { full_name: fullName },
-      },
-    });
-
-    if (!error && data.user) {
-      setUser(data.user);
-      await loadProfile();
-    }
-    return { error: error as Error | null };
-  };
-
-  const signIn = async (email: string, password: string) => {
+  const signIn = async (email: string, password: string, _rememberMe: boolean = true) => {
     if (!isSupabaseConfigured) {
       const mockUser = { id: `demo-user`, email } as User;
       setUser(mockUser);
@@ -130,13 +109,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     setUser(null);
     setSession(null);
+    setProfile(null);
   };
 
   const resetPassword = async (email: string) => {
     if (!isSupabaseConfigured) {
       return { error: null };
     }
-    const { error } = await supabase.auth.resetPasswordForEmail(email);
+    const redirectUrl = `${window.location.origin}/reset-password`;
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: redirectUrl,
+    });
+    return { error: error as Error | null };
+  };
+
+  const updatePassword = async (newPassword: string) => {
+    if (!isSupabaseConfigured) {
+      return { error: null };
+    }
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
     return { error: error as Error | null };
   };
 
@@ -152,11 +143,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         session,
         profile,
         loading,
+        isAdmin,
         isDemoMode,
-        signUp,
         signIn,
         signOut,
         resetPassword,
+        updatePassword,
         refreshProfile: loadProfile,
         seedDemoData,
       }}

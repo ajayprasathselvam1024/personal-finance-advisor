@@ -189,9 +189,14 @@ export const Navbar: React.FC<NavbarProps> = ({
           {showUserMenu && (
             <div className="absolute right-0 mt-2 w-48 rounded-2xl border border-slate-200 bg-white p-2 shadow-xl dark:border-slate-800 dark:bg-slate-900 z-50">
               <div className="px-3 py-2 border-b border-slate-100 dark:border-slate-800">
-                <p className="text-xs font-bold text-slate-900 dark:text-white truncate">
-                  {profile?.full_name || 'User Profile'}
-                </p>
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-bold text-slate-900 dark:text-white truncate">
+                    {profile?.full_name || 'Admin User'}
+                  </p>
+                  <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[9px] font-extrabold text-blue-700 dark:bg-blue-950 dark:text-blue-300 uppercase">
+                    ADMIN
+                  </span>
+                </div>
                 <p className="text-[10px] text-slate-400 uppercase tracking-wider mt-0.5">
                   Currency: INR (₹)
                 </p>

@@ -33,8 +33,22 @@ export const DebtPayoffPage: React.FC<DebtPayoffPageProps> = ({ loans, goldLoans
         </div>
       </div>
 
-      {/* Simulator Inputs & Strategy Selector */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+      {loans.length === 0 && goldLoans.length === 0 ? (
+        <div className="rounded-3xl border border-slate-200/80 bg-white p-12 text-center shadow-sm dark:border-slate-800 dark:bg-slate-900 space-y-4">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 dark:bg-blue-950 dark:text-blue-400">
+            <Flame className="h-8 w-8" />
+          </div>
+          <div>
+            <h3 className="text-lg font-bold text-slate-900 dark:text-white">No active loans recorded</h3>
+            <p className="text-xs text-slate-500 max-w-sm mx-auto mt-1">
+              Your debt payoff analysis, interest savings calculations, and payoff schedule will appear here once you add a loan.
+            </p>
+          </div>
+        </div>
+      ) : (
+        <>
+          {/* Simulator Inputs & Strategy Selector */}
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         {/* Controls */}
         <div className="rounded-3xl border border-slate-200/80 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900 space-y-5">
           <div>
@@ -160,6 +174,8 @@ export const DebtPayoffPage: React.FC<DebtPayoffPageProps> = ({ loans, goldLoans
         <Info className="h-3.5 w-3.5" />
         <span>Note: Payoff timelines are mathematical estimations assuming fixed monthly interest compounding.</span>
       </div>
+        </>
+      )}
     </div>
   );
 };

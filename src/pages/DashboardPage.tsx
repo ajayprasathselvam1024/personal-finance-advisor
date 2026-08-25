@@ -11,6 +11,7 @@ import {
   BrainCircuit,
   ArrowRight,
   Flame,
+  PieChart as PieChartIcon,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -126,7 +127,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
       </div>
 
       {/* Top 8 Summary Metric Cards */}
-      <div className="grid grid-cols-2 gap-3.5 sm:grid-cols-4 lg:grid-cols-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
         {/* 1. Monthly Income */}
         <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 card-hover">
           <div className="flex items-center justify-between text-emerald-600 dark:text-emerald-400">
@@ -339,41 +340,61 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             </button>
           </div>
 
-          <div className="h-52 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={categoryPieData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={50}
-                  outerRadius={75}
-                  paddingAngle={4}
-                  dataKey="value"
-                >
-                  {categoryPieData.map((_, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip formatter={(val) => formatINR(Number(val))} />
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
-
-          <div className="mt-2 space-y-1.5 max-h-28 overflow-y-auto pr-1">
-            {categoryPieData.slice(0, 5).map((cat, idx) => (
-              <div key={cat.name} className="flex items-center justify-between text-xs font-medium">
-                <div className="flex items-center gap-2">
-                  <div
-                    className="h-2.5 w-2.5 rounded-full"
-                    style={{ backgroundColor: COLORS[idx % COLORS.length] }}
-                  />
-                  <span className="text-slate-600 dark:text-slate-300">{cat.name}</span>
-                </div>
-                <span className="font-bold text-slate-900 dark:text-white">{formatINR(cat.value)}</span>
+          {categoryPieData.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-10 text-center space-y-3">
+              <div className="h-12 w-12 rounded-2xl bg-slate-100 flex items-center justify-center dark:bg-slate-800 text-slate-400">
+                <PieChartIcon className="h-6 w-6" />
               </div>
-            ))}
-          </div>
+              <div>
+                <p className="text-xs font-bold text-slate-900 dark:text-white">No expenses recorded yet</p>
+                <p className="text-[11px] text-slate-400 mt-0.5">Start recording expenses to view category distribution</p>
+              </div>
+              <button
+                onClick={() => onNavigate('expenses')}
+                className="rounded-xl bg-blue-600 px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-blue-700"
+              >
+                + Add First Expense
+              </button>
+            </div>
+          ) : (
+            <>
+              <div className="h-52 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={categoryPieData}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={50}
+                      outerRadius={75}
+                      paddingAngle={4}
+                      dataKey="value"
+                    >
+                      {categoryPieData.map((_, index) => (
+                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip formatter={(val) => formatINR(Number(val))} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+
+              <div className="mt-2 space-y-1.5 max-h-28 overflow-y-auto pr-1">
+                {categoryPieData.slice(0, 5).map((cat, idx) => (
+                  <div key={cat.name} className="flex items-center justify-between text-xs font-medium">
+                    <div className="flex items-center gap-2">
+                      <div
+                        className="h-2.5 w-2.5 rounded-full"
+                        style={{ backgroundColor: COLORS[idx % COLORS.length] }}
+                      />
+                      <span className="text-slate-600 dark:text-slate-300">{cat.name}</span>
+                    </div>
+                    <span className="font-bold text-slate-900 dark:text-white">{formatINR(cat.value)}</span>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
         </div>
       </div>
 
