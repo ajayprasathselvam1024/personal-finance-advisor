@@ -126,6 +126,25 @@ export const calculateFinancialHealthScore = (
   _savings: SavingsItem[],
   goals: FinancialGoal[]
 ): HealthScoreBreakdown => {
+  // If zero data entered, health score is 0
+  if (summary.monthlyIncome === 0 && summary.monthlyExpenses === 0) {
+    return {
+      score: 0,
+      rating: 'Needs Attention',
+      savingsScore: 0,
+      emergencyFundScore: 0,
+      emiBurdenScore: 0,
+      debtLevelScore: 0,
+      expenseControlScore: 0,
+      investmentScore: 0,
+      goalProgressScore: 0,
+      keyStrengths: ['Zero debt logged'],
+      keyImprovements: [
+        'Add monthly income to evaluate cash flow',
+        'Record expenses to calculate savings rate & health score',
+      ],
+    };
+  }
 
   // 1. Savings Rate Score (Max 20 pts)
   let savingsScore = 0;

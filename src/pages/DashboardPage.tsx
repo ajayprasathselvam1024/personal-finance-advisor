@@ -112,8 +112,12 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             <div>
               <p className="text-[11px] font-semibold text-slate-300 uppercase">Health Score</p>
               <div className="flex items-baseline gap-2">
-                <span className="text-3xl font-extrabold text-white">{healthScore.score}</span>
-                <span className="text-xs font-bold text-emerald-400">/ 100 ({healthScore.rating})</span>
+                <span className="text-3xl font-extrabold text-white">
+                  {summary.monthlyIncome === 0 && summary.monthlyExpenses === 0 ? '0' : healthScore.score}
+                </span>
+                <span className={`text-xs font-bold ${summary.monthlyIncome === 0 && summary.monthlyExpenses === 0 ? 'text-amber-300' : 'text-emerald-400'}`}>
+                  / 100 ({summary.monthlyIncome === 0 && summary.monthlyExpenses === 0 ? 'No Data' : healthScore.rating})
+                </span>
               </div>
             </div>
             <button
