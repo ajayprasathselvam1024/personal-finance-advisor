@@ -5,7 +5,10 @@ import type {
   Category,
   UserProfile,
   TransactionType,
+  ParsedTransaction,
+  ImportSource,
 } from '../types';
+import { importHistoryService } from './importHistoryService';
 
 export const DEFAULT_INCOME_CATEGORIES: string[] = [
   'Salary',
@@ -174,7 +177,6 @@ export const dataService = {
   },
 
   async deleteCategory(id: string, name: string, type: TransactionType): Promise<{ success: boolean; message?: string }> {
-    // Check if category is used in existing transactions
     const incomes = await this.getIncomes();
     const expenses = await this.getExpenses();
 
@@ -293,5 +295,84 @@ export const dataService = {
     const store = getLocalStore();
     store.expenses = store.expenses.filter((e) => e.id !== id);
     saveLocalStore(store);
+  },
+
+  // --- BULK STATEMENT IMPORT ---
+  async importBulkTransactions(
+    selectedRecords: ParsedTransaction[],
+    fileName: string,
+    source: ImportSource
+  ): Promise<{ importedCount: number }> {
+    if (!selectedRecords || selectedRecords.length === 0) return { importedCount: 0 };
+
+    const newIncomes: Omit<IncomeItem, 'id'>[] = [];
+    const newExpenses: Omit<ExpenseItem, 'id'>[] = [];
+
+    for (const rec of selectedRecords) {
+      if (rec.type === 'income') {
+        newIncomes.push({
+          amount: rec.amount,
+          date: rec.date,
+          category_name: rec.category_name,
+          description: rec.description,
+          notes: rec.notes,
+          source: rec.source,
+          reference_id: rec.reference_id,
+        });
+      } else {
+        newExpenses.push({
+          amount: rec.amount,
+          date: rec.date,
+          category_name: rec.category_name,
+          description: rec.description,
+          payment_method: rec.payment_method || 'UPI',
+          notes: rec.notes,
+          source: rec.source,
+          reference_id: rec.reference_id,
+        });
+      }
+    }
+
+    if (isSupabaseConfigured) {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        if (newIncomes.length > 0) {
+          const incPayload = newIncomes.map((i) => ({ ...i, user_id: user.id }));
+          await supabase.from('income').insert(incPayload);
+        }
+        if (newExpenses.length > 0) {
+          const expPayload = newExpenses.map((e) => ({ ...e, user_id: user.id }));
+          await supabase.from('expenses').insert(expPayload);
+        }
+      }
+    }
+
+    // Backup to local store for offline/sandbox testing
+    const store = getLocalStore();
+    newIncomes.forEach((i, idx) => {
+      store.incomes.unshift({
+        ...i,
+        id: `inc-imp-${Date.now()}-${idx}`,
+        created_at: new Date().toISOString(),
+      });
+    });
+    newExpenses.forEach((e, idx) => {
+      store.expenses.unshift({
+        ...e,
+        id: `exp-imp-${Date.now()}-${idx}`,
+        created_at: new Date().toISOString(),
+      });
+    });
+    saveLocalStore(store);
+
+    // Save Import History Log
+    await importHistoryService.addHistory({
+      file_name: fileName,
+      source,
+      transaction_count: selectedRecords.length,
+      status: 'Completed',
+    });
+
+    return { importedCount: selectedRecords.length };
   },
 };

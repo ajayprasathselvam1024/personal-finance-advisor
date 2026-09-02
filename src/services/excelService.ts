@@ -10,6 +10,13 @@ export const exportTransactionsToExcel = (
     return;
   }
 
+  const formatSourceLabel = (src?: string) => {
+    if (src === 'IDFC_BANK') return 'IDFC FIRST Bank';
+    if (src === 'HDFC_BANK') return 'HDFC Bank';
+    if (src === 'GOOGLE_PAY') return 'Google Pay';
+    return 'Manual';
+  };
+
   // Format rows for Excel
   const excelRows = transactions.map((t) => ({
     Date: t.date,
@@ -17,6 +24,8 @@ export const exportTransactionsToExcel = (
     Category: t.category_name,
     Description: t.description || '',
     'Payment Method': t.payment_method || (t.type === 'income' ? 'N/A' : 'Other'),
+    Source: formatSourceLabel(t.source),
+    'Reference ID': t.reference_id || 'N/A',
     'Amount (₹)': t.amount,
     Notes: t.notes || '',
   }));
@@ -31,6 +40,8 @@ export const exportTransactionsToExcel = (
     { wch: 18 }, // Category
     { wch: 25 }, // Description
     { wch: 15 }, // Payment Method
+    { wch: 16 }, // Source
+    { wch: 18 }, // Reference ID
     { wch: 14 }, // Amount
     { wch: 25 }, // Notes
   ];
@@ -55,6 +66,8 @@ export const exportIncomesToExcel = (incomes: IncomeItem[]) => {
     date: i.date,
     category_name: i.category_name,
     description: i.description,
+    source: i.source,
+    reference_id: i.reference_id,
     notes: i.notes,
   }));
   exportTransactionsToExcel(unified, 'Income_Report');
@@ -69,6 +82,8 @@ export const exportExpensesToExcel = (expenses: ExpenseItem[]) => {
     category_name: e.category_name,
     description: e.description,
     payment_method: e.payment_method,
+    source: e.source,
+    reference_id: e.reference_id,
     notes: e.notes,
   }));
   exportTransactionsToExcel(unified, 'Expense_Report');

@@ -2,6 +2,7 @@ import React from 'react';
 import {
   LayoutDashboard,
   Receipt,
+  FileSpreadsheet,
   ArrowUpRight,
   ArrowDownLeft,
   Tags,
@@ -23,6 +24,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activePage, onNavigate }) => {
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'transactions', label: 'Transactions', icon: Receipt },
+    { id: 'import', label: 'Import Statement', icon: FileSpreadsheet },
     { id: 'income', label: 'Income', icon: ArrowUpRight },
     { id: 'expenses', label: 'Expenses', icon: ArrowDownLeft },
     { id: 'categories', label: 'Categories', icon: Tags },

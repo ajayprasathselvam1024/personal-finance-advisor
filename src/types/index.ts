@@ -14,6 +14,14 @@ export interface UserProfile {
 
 export type TransactionType = 'income' | 'expense';
 
+export type TransactionSource =
+  | 'IDFC_BANK'
+  | 'HDFC_BANK'
+  | 'GOOGLE_PAY'
+  | 'MANUAL';
+
+export type ImportSource = 'IDFC' | 'HDFC' | 'GOOGLE_PAY';
+
 export interface Category {
   id: string;
   user_id?: string;
@@ -41,6 +49,8 @@ export interface IncomeItem {
   category_name: string;
   description: string;
   notes?: string;
+  source?: TransactionSource;
+  reference_id?: string;
   created_at?: string;
 }
 
@@ -53,6 +63,8 @@ export interface ExpenseItem {
   description: string;
   payment_method: PaymentMethod;
   notes?: string;
+  source?: TransactionSource;
+  reference_id?: string;
   created_at?: string;
 }
 
@@ -65,6 +77,8 @@ export interface UnifiedTransaction {
   category_name: string;
   description: string;
   payment_method?: PaymentMethod;
+  source?: TransactionSource;
+  reference_id?: string;
   notes?: string;
   created_at?: string;
 }
@@ -76,4 +90,30 @@ export interface FinancialSummary {
   currentMonthIncome: number;
   currentMonthExpense: number;
   currentMonthBalance: number;
+}
+
+export interface ParsedTransaction {
+  id: string;
+  date: string; // YYYY-MM-DD
+  description: string;
+  amount: number;
+  type: TransactionType;
+  category_name: string;
+  payment_method: PaymentMethod;
+  source: TransactionSource;
+  reference_id?: string;
+  notes?: string;
+  is_duplicate?: boolean;
+  needs_review?: boolean;
+  selected: boolean;
+}
+
+export interface ImportHistoryItem {
+  id: string;
+  user_id?: string;
+  file_name: string;
+  source: ImportSource;
+  imported_at: string;
+  transaction_count: number;
+  status: 'Completed' | 'Failed';
 }

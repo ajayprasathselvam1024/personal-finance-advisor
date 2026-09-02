@@ -9,7 +9,7 @@ import {
   ChevronLeft,
   ChevronRight,
 } from 'lucide-react';
-import type { IncomeItem, ExpenseItem, UnifiedTransaction, Category } from '../types';
+import type { IncomeItem, ExpenseItem, UnifiedTransaction, Category, TransactionSource } from '../types';
 import { dataService } from '../services/dataService';
 import { exportTransactionsToExcel } from '../services/excelService';
 import { formatINR, formatDate } from '../utils/formatters';
@@ -30,9 +30,9 @@ export const TransactionsPage: React.FC<TransactionsPageProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [typeFilter, setTypeFilter] = useState<'all' | 'income' | 'expense'>('all');
   const [categoryFilter, setCategoryFilter] = useState('all');
+  const [sourceFilter, setSourceFilter] = useState<'all' | TransactionSource>('all');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
-  const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
 
   // Pagination State
   const [currentPage, setCurrentPage] = useState(1);
@@ -48,6 +48,8 @@ export const TransactionsPage: React.FC<TransactionsPageProps> = ({
       date: i.date,
       category_name: i.category_name,
       description: i.description,
+      source: i.source || 'MANUAL',
+      reference_id: i.reference_id,
       notes: i.notes,
       created_at: i.created_at,
     })),
@@ -60,6 +62,8 @@ export const TransactionsPage: React.FC<TransactionsPageProps> = ({
       category_name: e.category_name,
       description: e.description,
       payment_method: e.payment_method,
+      source: e.source || 'MANUAL',
+      reference_id: e.reference_id,
       notes: e.notes,
       created_at: e.created_at,
     })),
@@ -77,17 +81,22 @@ export const TransactionsPage: React.FC<TransactionsPageProps> = ({
       const matchesCategory =
         categoryFilter === 'all' || t.category_name.toLowerCase() === categoryFilter.toLowerCase();
 
+      const matchesSource =
+        sourceFilter === 'all' || (t.source || 'MANUAL') === sourceFilter;
+
       const matchesStartDate = !startDate || t.date >= startDate;
       const matchesEndDate = !endDate || t.date <= endDate;
 
-      return matchesType && matchesSearch && matchesCategory && matchesStartDate && matchesEndDate;
+      return (
+        matchesType &&
+        matchesSearch &&
+        matchesCategory &&
+        matchesSource &&
+        matchesStartDate &&
+        matchesEndDate
+      );
     })
-    .sort((a, b) => {
-      if (sortOrder === 'desc') {
-        return b.date.localeCompare(a.date);
-      }
-      return a.date.localeCompare(b.date);
-    });
+    .sort((a, b) => b.date.localeCompare(a.date));
 
   // Pagination math
   const totalPages = Math.ceil(filtered.length / itemsPerPage) || 1;
@@ -108,6 +117,13 @@ export const TransactionsPage: React.FC<TransactionsPageProps> = ({
     exportTransactionsToExcel(filtered, 'Unified_Transactions');
   };
 
+  const formatSourceBadge = (source?: TransactionSource) => {
+    if (source === 'IDFC_BANK') return { label: 'IDFC Bank', cls: 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300' };
+    if (source === 'HDFC_BANK') return { label: 'HDFC Bank', cls: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300' };
+    if (source === 'GOOGLE_PAY') return { label: 'Google Pay', cls: 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300' };
+    return { label: 'Manual', cls: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300' };
+  };
+
   return (
     <div className="space-y-6 pb-16 font-sans">
       {/* Header & Export Excel */}
@@ -118,7 +134,7 @@ export const TransactionsPage: React.FC<TransactionsPageProps> = ({
             <span>Unified Transactions Ledger</span>
           </h1>
           <p className="text-xs text-slate-500 mt-0.5">
-            Complete searchable history of all personal income and expense transactions.
+            Complete history of manual entries and imported IDFC, HDFC, and Google Pay statements.
           </p>
         </div>
 
@@ -132,13 +148,13 @@ export const TransactionsPage: React.FC<TransactionsPageProps> = ({
       </div>
 
       {/* Filters Toolbar */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 bg-white p-4 rounded-2xl border border-slate-200/80 dark:bg-slate-900 dark:border-slate-800 shadow-sm">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3 bg-white p-4 rounded-2xl border border-slate-200/80 dark:bg-slate-900 dark:border-slate-800 shadow-sm">
         {/* Search */}
         <div className="relative flex items-center">
           <Search className="absolute left-3 h-4 w-4 text-slate-400" />
           <input
             type="text"
-            placeholder="Search description or category..."
+            placeholder="Search description..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-9 pr-3 text-xs font-semibold text-slate-900 outline-none focus:border-blue-600 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
@@ -152,9 +168,24 @@ export const TransactionsPage: React.FC<TransactionsPageProps> = ({
             onChange={(e) => setTypeFilter(e.target.value as any)}
             className="w-full rounded-xl border border-slate-200 bg-slate-50 p-2.5 text-xs font-semibold text-slate-900 outline-none focus:border-blue-600 dark:border-slate-700 dark:bg-slate-800 dark:text-white cursor-pointer"
           >
-            <option value="all">All Types (Income & Expense)</option>
+            <option value="all">All Types</option>
             <option value="income">Income Only</option>
             <option value="expense">Expenses Only</option>
+          </select>
+        </div>
+
+        {/* Source Filter */}
+        <div>
+          <select
+            value={sourceFilter}
+            onChange={(e) => setSourceFilter(e.target.value as any)}
+            className="w-full rounded-xl border border-slate-200 bg-slate-50 p-2.5 text-xs font-semibold text-slate-900 outline-none focus:border-blue-600 dark:border-slate-700 dark:bg-slate-800 dark:text-white cursor-pointer"
+          >
+            <option value="all">All Sources</option>
+            <option value="IDFC_BANK">IDFC Bank</option>
+            <option value="HDFC_BANK">HDFC Bank</option>
+            <option value="GOOGLE_PAY">Google Pay</option>
+            <option value="MANUAL">Manual</option>
           </select>
         </div>
 
@@ -168,7 +199,7 @@ export const TransactionsPage: React.FC<TransactionsPageProps> = ({
             <option value="all">All Categories</option>
             {_categories.map((c) => (
               <option key={c.id} value={c.name}>
-                {c.name} ({c.type})
+                {c.name}
               </option>
             ))}
           </select>
@@ -193,18 +224,6 @@ export const TransactionsPage: React.FC<TransactionsPageProps> = ({
             className="w-full rounded-xl border border-slate-200 bg-slate-50 p-2.5 text-xs font-semibold text-slate-900 outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
           />
         </div>
-
-        {/* Sort Order */}
-        <div>
-          <select
-            value={sortOrder}
-            onChange={(e) => setSortOrder(e.target.value as any)}
-            className="w-full rounded-xl border border-slate-200 bg-slate-50 p-2.5 text-xs font-semibold text-slate-900 outline-none focus:border-blue-600 dark:border-slate-700 dark:bg-slate-800 dark:text-white cursor-pointer"
-          >
-            <option value="desc">Newest First</option>
-            <option value="asc">Oldest First</option>
-          </select>
-        </div>
       </div>
 
       {/* Transactions Table */}
@@ -215,9 +234,9 @@ export const TransactionsPage: React.FC<TransactionsPageProps> = ({
               <tr>
                 <th className="px-6 py-4">Date</th>
                 <th className="px-6 py-4">Type</th>
+                <th className="px-6 py-4">Source</th>
                 <th className="px-6 py-4">Category</th>
                 <th className="px-6 py-4">Description</th>
-                <th className="px-6 py-4">Payment Method</th>
                 <th className="px-6 py-4">Amount</th>
                 <th className="px-6 py-4 text-right">Actions</th>
               </tr>
@@ -230,41 +249,48 @@ export const TransactionsPage: React.FC<TransactionsPageProps> = ({
                   </td>
                 </tr>
               ) : (
-                paginatedItems.map((item) => (
-                  <tr key={item.id} className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors">
-                    <td className="px-6 py-4 font-semibold text-slate-600 dark:text-slate-400">{formatDate(item.date)}</td>
-                    <td className="px-6 py-4">
-                      <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-extrabold uppercase ${
-                        item.type === 'income'
-                          ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
-                          : 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300'
+                paginatedItems.map((item) => {
+                  const badge = formatSourceBadge(item.source);
+                  return (
+                    <tr key={item.id} className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors">
+                      <td className="px-6 py-4 font-semibold text-slate-600 dark:text-slate-400">{formatDate(item.date)}</td>
+                      <td className="px-6 py-4">
+                        <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-extrabold uppercase ${
+                          item.type === 'income'
+                            ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
+                            : 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300'
+                        }`}>
+                          {item.type === 'income' ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownLeft className="h-3 w-3" />}
+                          <span>{item.type}</span>
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-extrabold ${badge.cls}`}>
+                          {badge.label}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 font-semibold text-slate-900 dark:text-white">{item.category_name}</td>
+                      <td className="px-6 py-4 font-bold text-slate-900 dark:text-white">
+                        {item.description || item.type}
+                        {item.reference_id && <span className="block text-[10px] font-mono text-slate-400 font-normal">Ref: {item.reference_id}</span>}
+                      </td>
+                      <td className={`px-6 py-4 font-extrabold text-sm ${
+                        item.type === 'income' ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
                       }`}>
-                        {item.type === 'income' ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownLeft className="h-3 w-3" />}
-                        <span>{item.type}</span>
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 font-semibold text-slate-900 dark:text-white">{item.category_name}</td>
-                    <td className="px-6 py-4 font-bold text-slate-900 dark:text-white">
-                      {item.description || item.type}
-                      {item.notes && <p className="text-[11px] text-slate-400 font-normal">{item.notes}</p>}
-                    </td>
-                    <td className="px-6 py-4 text-slate-600 dark:text-slate-300">{item.payment_method || 'N/A'}</td>
-                    <td className={`px-6 py-4 font-extrabold text-sm ${
-                      item.type === 'income' ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
-                    }`}>
-                      {item.type === 'income' ? '+' : '-'}{formatINR(item.amount)}
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <button
-                        onClick={() => handleDelete(item)}
-                        className="rounded-lg p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/30 min-h-[44px] min-w-[44px] inline-flex items-center justify-center"
-                        title="Delete Transaction"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </td>
-                  </tr>
-                ))
+                        {item.type === 'income' ? '+' : '-'}{formatINR(item.amount)}
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <button
+                          onClick={() => handleDelete(item)}
+                          className="rounded-lg p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/30 min-h-[44px] min-w-[44px] inline-flex items-center justify-center"
+                          title="Delete Transaction"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>

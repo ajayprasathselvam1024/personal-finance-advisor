@@ -3,6 +3,7 @@ import {
   LayoutDashboard,
   Receipt,
   Plus,
+  FileSpreadsheet,
   FileText,
   Menu,
   X,
@@ -32,6 +33,7 @@ export const MobileNav: React.FC<MobileNavProps> = ({
   const drawerItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'transactions', label: 'Transactions', icon: Receipt },
+    { id: 'import', label: 'Import Statement', icon: FileSpreadsheet },
     { id: 'income', label: 'Income', icon: ArrowUpRight },
     { id: 'expenses', label: 'Expenses', icon: ArrowDownLeft },
     { id: 'categories', label: 'Categories', icon: Tags },
@@ -127,26 +129,26 @@ export const MobileNav: React.FC<MobileNavProps> = ({
           }`}
         >
           <Receipt className="h-5 w-5" />
-          <span>Transactions</span>
+          <span>Ledger</span>
         </button>
 
         {/* Prominent Central "+ Add" FAB Button */}
         <button
           onClick={onOpenAddModal}
           className="-mt-6 flex h-14 w-14 items-center justify-center rounded-full bg-blue-600 text-white shadow-xl shadow-blue-500/40 active:scale-95 transition-transform border-4 border-white dark:border-slate-900"
-          title="Add Income or Expense"
+          title="Add Transaction"
         >
           <Plus className="h-7 w-7 stroke-[2.5]" />
         </button>
 
         <button
-          onClick={() => onNavigate('reports')}
+          onClick={() => onNavigate('import')}
           className={`flex flex-col items-center justify-center gap-1 text-[10px] font-extrabold min-h-[44px] min-w-[50px] ${
-            activePage === 'reports' ? 'text-blue-600 dark:text-blue-400' : 'text-slate-500 dark:text-slate-400'
+            activePage === 'import' ? 'text-blue-600 dark:text-blue-400' : 'text-slate-500 dark:text-slate-400'
           }`}
         >
-          <FileText className="h-5 w-5" />
-          <span>Reports</span>
+          <FileSpreadsheet className="h-5 w-5" />
+          <span>Import</span>
         </button>
 
         <button

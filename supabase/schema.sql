@@ -50,6 +50,8 @@ CREATE TABLE IF NOT EXISTS public.income (
   date DATE NOT NULL,
   category_name TEXT NOT NULL,
   description TEXT,
+  source TEXT DEFAULT 'MANUAL' CHECK (source IN ('IDFC_BANK', 'HDFC_BANK', 'GOOGLE_PAY', 'MANUAL')),
+  reference_id TEXT,
   notes TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -63,8 +65,21 @@ CREATE TABLE IF NOT EXISTS public.expenses (
   category_name TEXT NOT NULL,
   description TEXT,
   payment_method TEXT NOT NULL CHECK (payment_method IN ('Cash', 'UPI', 'Credit Card', 'Debit Card', 'Bank Transfer', 'Other')),
+  source TEXT DEFAULT 'MANUAL' CHECK (source IN ('IDFC_BANK', 'HDFC_BANK', 'GOOGLE_PAY', 'MANUAL')),
+  reference_id TEXT,
   notes TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 6. IMPORT HISTORY TABLE
+CREATE TABLE IF NOT EXISTS public.import_history (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  file_name TEXT NOT NULL,
+  source TEXT NOT NULL CHECK (source IN ('IDFC', 'HDFC', 'GOOGLE_PAY')),
+  imported_at TIMESTAMPTZ DEFAULT NOW(),
+  transaction_count INTEGER NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'Completed'
 );
 
 -- ====================================================================
@@ -74,7 +89,9 @@ CREATE TABLE IF NOT EXISTS public.expenses (
 CREATE INDEX IF NOT EXISTS idx_income_user_date ON public.income(user_id, date DESC);
 CREATE INDEX IF NOT EXISTS idx_expenses_user_date ON public.expenses(user_id, date DESC);
 CREATE INDEX IF NOT EXISTS idx_expenses_user_category ON public.expenses(user_id, category_name);
-CREATE INDEX IF NOT EXISTS idx_categories_user_type ON public.categories(user_id, type);
+CREATE INDEX IF NOT EXISTS idx_income_ref ON public.income(user_id, reference_id);
+CREATE INDEX IF NOT EXISTS idx_expenses_ref ON public.expenses(user_id, reference_id);
+CREATE INDEX IF NOT EXISTS idx_import_hist_user ON public.import_history(user_id, imported_at DESC);
 
 -- ====================================================================
 -- ROW LEVEL SECURITY (RLS) POLICIES
@@ -85,6 +102,7 @@ ALTER TABLE public.user_permissions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.categories ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.income ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.expenses ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.import_history ENABLE ROW LEVEL SECURITY;
 
 -- Helper function to check Admin status
 CREATE OR REPLACE FUNCTION public.is_admin()
@@ -97,7 +115,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- RLS for Categories, Income, Expenses
+-- RLS Helper
 CREATE OR REPLACE FUNCTION create_simple_rls_policy(table_name text) RETURNS void AS $$
 BEGIN
   EXECUTE format('DROP POLICY IF EXISTS "Access policy for %I" ON public.%I', table_name, table_name);
@@ -108,6 +126,7 @@ $$ LANGUAGE plpgsql;
 SELECT create_simple_rls_policy('categories');
 SELECT create_simple_rls_policy('income');
 SELECT create_simple_rls_policy('expenses');
+SELECT create_simple_rls_policy('import_history');
 
 -- Profile RLS
 DROP POLICY IF EXISTS "Profile RLS" ON public.profiles;
@@ -116,67 +135,3 @@ CREATE POLICY "Profile RLS" ON public.profiles FOR ALL USING (auth.uid() = id OR
 -- User Permissions RLS
 DROP POLICY IF EXISTS "Permissions RLS" ON public.user_permissions;
 CREATE POLICY "Permissions RLS" ON public.user_permissions FOR ALL USING (auth.uid() = user_id OR public.is_admin()) WITH CHECK (public.is_admin());
-
--- ====================================================================
--- AUTOMATIC PROFILE & DEFAULT CATEGORIES TRIGGER ON AUTH SIGNUP
--- ====================================================================
-
-CREATE OR REPLACE FUNCTION public.handle_new_user()
-RETURNS TRIGGER AS $$
-BEGIN
-  -- Create Profile
-  INSERT INTO public.profiles (id, email, full_name, role, is_active, currency)
-  VALUES (
-    new.id,
-    new.email,
-    COALESCE(new.raw_user_meta_data->>'full_name', 'User'),
-    COALESCE(new.raw_user_meta_data->>'role', 'USER'),
-    true,
-    'INR'
-  )
-  ON CONFLICT (id) DO UPDATE SET
-    email = EXCLUDED.email,
-    full_name = COALESCE(EXCLUDED.full_name, public.profiles.full_name);
-
-  -- Insert Default Income Categories
-  INSERT INTO public.categories (user_id, name, type, is_custom) VALUES
-    (new.id, 'Salary', 'income', false),
-    (new.id, 'Freelance', 'income', false),
-    (new.id, 'Business', 'income', false),
-    (new.id, 'Bonus', 'income', false),
-    (new.id, 'Interest', 'income', false),
-    (new.id, 'Rental Income', 'income', false),
-    (new.id, 'Other', 'income', false)
-  ON CONFLICT DO NOTHING;
-
-  -- Insert Default Expense Categories
-  INSERT INTO public.categories (user_id, name, type, is_custom) VALUES
-    (new.id, 'Food', 'expense', false),
-    (new.id, 'Groceries', 'expense', false),
-    (new.id, 'Transport', 'expense', false),
-    (new.id, 'Fuel', 'expense', false),
-    (new.id, 'Shopping', 'expense', false),
-    (new.id, 'Entertainment', 'expense', false),
-    (new.id, 'Bills', 'expense', false),
-    (new.id, 'Electricity', 'expense', false),
-    (new.id, 'Internet', 'expense', false),
-    (new.id, 'Mobile', 'expense', false),
-    (new.id, 'Rent', 'expense', false),
-    (new.id, 'Medical', 'expense', false),
-    (new.id, 'Education', 'expense', false),
-    (new.id, 'Travel', 'expense', false),
-    (new.id, 'Personal', 'expense', false),
-    (new.id, 'Family', 'expense', false),
-    (new.id, 'Subscriptions', 'expense', false),
-    (new.id, 'Other', 'expense', false)
-  ON CONFLICT DO NOTHING;
-
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
-
--- Drop trigger if exists
-DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
-CREATE TRIGGER on_auth_user_created
-  AFTER INSERT ON auth.users
-  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();

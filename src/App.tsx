@@ -12,6 +12,7 @@ import { ExpensesPage } from './pages/ExpensesPage';
 import { TransactionsPage } from './pages/TransactionsPage';
 import { CategoriesPage } from './pages/CategoriesPage';
 import { ReportsPage } from './pages/ReportsPage';
+import { StatementImportPage } from './pages/StatementImportPage';
 import { UserManagementPage } from './pages/UserManagementPage';
 import { SettingsPage } from './pages/SettingsPage';
 
@@ -97,6 +98,7 @@ const MainApp: React.FC = () => {
         category_name: quickCategory || 'Salary',
         description: quickDescription || 'Income',
         notes: quickNotes,
+        source: 'MANUAL',
       });
     } else {
       await dataService.addExpense({
@@ -106,6 +108,7 @@ const MainApp: React.FC = () => {
         description: quickDescription || 'Expense',
         payment_method: quickPaymentMethod,
         notes: quickNotes,
+        source: 'MANUAL',
       });
     }
 
@@ -163,6 +166,15 @@ const MainApp: React.FC = () => {
             expenses={expenses}
             categories={categories}
             onRefresh={loadAllData}
+          />
+        )}
+
+        {activePage === 'import' && (
+          <StatementImportPage
+            categories={categories}
+            incomes={incomes}
+            expenses={expenses}
+            onImportSuccess={loadAllData}
           />
         )}
 
