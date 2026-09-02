@@ -1,9 +1,9 @@
 -- ====================================================================
--- PERSONAL FINANCE ADVISOR & MANAGEMENT DATABASE SCHEMA
--- SUPABASE POSTGRESQL SCHEMA WITH RBAC AND ROW LEVEL SECURITY (RLS)
+-- MY FINANCE - PERSONAL INCOME & EXPENSE MANAGER DATABASE SCHEMA
+-- SUPABASE POSTGRESQL SCHEMA WITH ROW LEVEL SECURITY (RLS)
 -- ====================================================================
 
--- Enable UUID Extension if not enabled
+-- Enable UUID Extension
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- 1. PROFILES TABLE (Extends Supabase auth.users)
@@ -16,7 +16,6 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   currency TEXT DEFAULT 'INR',
   monthly_income NUMERIC DEFAULT 0 CHECK (monthly_income >= 0),
   theme TEXT DEFAULT 'system' CHECK (theme IN ('light', 'dark', 'system')),
-  notification_preferences JSONB DEFAULT '{"email": true, "inApp": true, "dueReminders": true, "budgetAlerts": true}'::jsonb,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -30,7 +29,7 @@ CREATE TABLE IF NOT EXISTS public.user_permissions (
   UNIQUE(user_id, permission_key)
 );
 
--- 3. CATEGORIES TABLE
+-- 3. CATEGORIES TABLE (Income & Expense Categories)
 CREATE TABLE IF NOT EXISTS public.categories (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
@@ -47,12 +46,10 @@ CREATE TABLE IF NOT EXISTS public.categories (
 CREATE TABLE IF NOT EXISTS public.income (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
-  source TEXT NOT NULL CHECK (source IN ('Salary', 'Freelance', 'Business', 'Bonus', 'Interest', 'Rental', 'Other')),
   amount NUMERIC NOT NULL CHECK (amount >= 0),
   date DATE NOT NULL,
+  category_name TEXT NOT NULL,
   description TEXT,
-  is_recurring BOOLEAN DEFAULT false,
-  recurrence_frequency TEXT DEFAULT 'monthly',
   notes TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -61,139 +58,23 @@ CREATE TABLE IF NOT EXISTS public.income (
 CREATE TABLE IF NOT EXISTS public.expenses (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
-  category_name TEXT NOT NULL,
-  sub_category TEXT,
   amount NUMERIC NOT NULL CHECK (amount > 0),
   date DATE NOT NULL,
+  category_name TEXT NOT NULL,
+  description TEXT,
   payment_method TEXT NOT NULL CHECK (payment_method IN ('Cash', 'UPI', 'Credit Card', 'Debit Card', 'Bank Transfer', 'Other')),
-  merchant TEXT,
-  is_recurring BOOLEAN DEFAULT false,
   notes TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 6. LOANS & EMI TABLE
-CREATE TABLE IF NOT EXISTS public.loans (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
-  name TEXT NOT NULL,
-  type TEXT NOT NULL CHECK (type IN ('Personal Loan', 'Home Loan', 'Vehicle Loan', 'Credit Card', 'Consumer Loan', 'Other')),
-  original_amount NUMERIC NOT NULL CHECK (original_amount > 0),
-  current_outstanding NUMERIC NOT NULL CHECK (current_outstanding >= 0),
-  emi_amount NUMERIC NOT NULL CHECK (emi_amount >= 0),
-  interest_rate NUMERIC NOT NULL CHECK (interest_rate >= 0),
-  tenure_months INT NOT NULL CHECK (tenure_months > 0),
-  remaining_tenure INT NOT NULL CHECK (remaining_tenure >= 0),
-  start_date DATE NOT NULL,
-  due_date_day INT NOT NULL CHECK (due_date_day BETWEEN 1 AND 31),
-  lender TEXT NOT NULL,
-  status TEXT DEFAULT 'active' CHECK (status IN ('active', 'closed', 'refinanced')),
-  notes TEXT,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
+-- ====================================================================
+-- PERFORMANCE INDEXES
+-- ====================================================================
 
--- 7. LOAN PAYMENTS TABLE
-CREATE TABLE IF NOT EXISTS public.loan_payments (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
-  loan_id UUID REFERENCES public.loans(id) ON DELETE CASCADE NOT NULL,
-  amount NUMERIC NOT NULL CHECK (amount > 0),
-  payment_date DATE NOT NULL,
-  principal_component NUMERIC DEFAULT 0,
-  interest_component NUMERIC DEFAULT 0,
-  notes TEXT,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
--- 8. GOLD LOANS TABLE
-CREATE TABLE IF NOT EXISTS public.gold_loans (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
-  name TEXT NOT NULL,
-  principal_amount NUMERIC NOT NULL CHECK (principal_amount > 0),
-  current_outstanding NUMERIC NOT NULL CHECK (current_outstanding >= 0),
-  interest_rate NUMERIC NOT NULL CHECK (interest_rate >= 0),
-  interest_type TEXT NOT NULL CHECK (interest_type IN ('Monthly Simple', 'Annual Simple', 'Compounded', 'Bullet Payment')),
-  start_date DATE NOT NULL,
-  due_date DATE NOT NULL,
-  monthly_payment NUMERIC NOT NULL CHECK (monthly_payment >= 0),
-  lender TEXT NOT NULL,
-  gold_pledged_description TEXT NOT NULL,
-  status TEXT DEFAULT 'active' CHECK (status IN ('active', 'closed')),
-  notes TEXT,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
--- 9. SAVINGS TABLE
-CREATE TABLE IF NOT EXISTS public.savings (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
-  name TEXT NOT NULL,
-  type TEXT NOT NULL CHECK (type IN ('Emergency Fund', 'Bank Savings', 'RD', 'FD', 'Gold Savings', 'Mutual Fund', 'Other')),
-  amount NUMERIC NOT NULL CHECK (amount >= 0),
-  expected_return_rate NUMERIC DEFAULT 0 CHECK (expected_return_rate >= 0),
-  date DATE NOT NULL,
-  notes TEXT,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
--- 10. INVESTMENTS TABLE
-CREATE TABLE IF NOT EXISTS public.investments (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
-  name TEXT NOT NULL,
-  type TEXT NOT NULL CHECK (type IN ('Mutual Funds', 'SIP', 'Stocks', 'FD', 'RD', 'Gold', 'Other')),
-  invested_amount NUMERIC NOT NULL CHECK (invested_amount >= 0),
-  current_value NUMERIC NOT NULL CHECK (current_value >= 0),
-  monthly_contribution NUMERIC DEFAULT 0 CHECK (monthly_contribution >= 0),
-  expected_return_rate NUMERIC DEFAULT 0 CHECK (expected_return_rate >= 0),
-  date DATE NOT NULL,
-  notes TEXT,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
--- 11. BUDGETS TABLE
-CREATE TABLE IF NOT EXISTS public.budgets (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
-  category_name TEXT NOT NULL,
-  monthly_limit NUMERIC NOT NULL CHECK (monthly_limit > 0),
-  month INT NOT NULL CHECK (month BETWEEN 1 AND 12),
-  year INT NOT NULL,
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  UNIQUE(user_id, category_name, month, year)
-);
-
--- 12. FINANCIAL GOALS TABLE
-CREATE TABLE IF NOT EXISTS public.financial_goals (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
-  name TEXT NOT NULL,
-  target_amount NUMERIC NOT NULL CHECK (target_amount > 0),
-  current_amount NUMERIC NOT NULL DEFAULT 0 CHECK (current_amount >= 0),
-  target_date DATE NOT NULL,
-  monthly_contribution NUMERIC DEFAULT 0 CHECK (monthly_contribution >= 0),
-  priority TEXT DEFAULT 'medium' CHECK (priority IN ('low', 'medium', 'high')),
-  category TEXT DEFAULT 'General',
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
--- 13. RECURRING TRANSACTIONS TABLE
-CREATE TABLE IF NOT EXISTS public.recurring_transactions (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
-  title TEXT NOT NULL,
-  type TEXT NOT NULL CHECK (type IN ('income', 'expense', 'emi', 'savings', 'investment')),
-  amount NUMERIC NOT NULL CHECK (amount > 0),
-  category_name TEXT,
-  frequency TEXT NOT NULL CHECK (frequency IN ('monthly', 'weekly', 'yearly')),
-  start_date DATE NOT NULL,
-  end_date DATE,
-  last_processed_date DATE,
-  is_active BOOLEAN DEFAULT true,
-  notes TEXT,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
+CREATE INDEX IF NOT EXISTS idx_income_user_date ON public.income(user_id, date DESC);
+CREATE INDEX IF NOT EXISTS idx_expenses_user_date ON public.expenses(user_id, date DESC);
+CREATE INDEX IF NOT EXISTS idx_expenses_user_category ON public.expenses(user_id, category_name);
+CREATE INDEX IF NOT EXISTS idx_categories_user_type ON public.categories(user_id, type);
 
 -- ====================================================================
 -- ROW LEVEL SECURITY (RLS) POLICIES
@@ -204,16 +85,8 @@ ALTER TABLE public.user_permissions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.categories ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.income ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.expenses ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.loans ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.loan_payments ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.gold_loans ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.savings ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.investments ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.budgets ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.financial_goals ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.recurring_transactions ENABLE ROW LEVEL SECURITY;
 
--- Helper function to check if current user is ADMIN
+-- Helper function to check Admin status
 CREATE OR REPLACE FUNCTION public.is_admin()
 RETURNS BOOLEAN AS $$
 BEGIN
@@ -224,28 +97,19 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- Helper function for Admin & User RLS Policies
-CREATE OR REPLACE FUNCTION create_rbac_rls_policy(table_name text) RETURNS void AS $$
+-- RLS for Categories, Income, Expenses
+CREATE OR REPLACE FUNCTION create_simple_rls_policy(table_name text) RETURNS void AS $$
 BEGIN
   EXECUTE format('DROP POLICY IF EXISTS "Access policy for %I" ON public.%I', table_name, table_name);
   EXECUTE format('CREATE POLICY "Access policy for %I" ON public.%I FOR ALL USING (auth.uid() = user_id OR public.is_admin()) WITH CHECK (auth.uid() = user_id OR public.is_admin())', table_name, table_name);
 END;
 $$ LANGUAGE plpgsql;
 
--- Apply RLS policies to tables
-SELECT create_rbac_rls_policy('categories');
-SELECT create_rbac_rls_policy('income');
-SELECT create_rbac_rls_policy('expenses');
-SELECT create_rbac_rls_policy('loans');
-SELECT create_rbac_rls_policy('loan_payments');
-SELECT create_rbac_rls_policy('gold_loans');
-SELECT create_rbac_rls_policy('savings');
-SELECT create_rbac_rls_policy('investments');
-SELECT create_rbac_rls_policy('budgets');
-SELECT create_rbac_rls_policy('financial_goals');
-SELECT create_rbac_rls_policy('recurring_transactions');
+SELECT create_simple_rls_policy('categories');
+SELECT create_simple_rls_policy('income');
+SELECT create_simple_rls_policy('expenses');
 
--- Profile RLS (Users view own profile, Admin manages all profiles)
+-- Profile RLS
 DROP POLICY IF EXISTS "Profile RLS" ON public.profiles;
 CREATE POLICY "Profile RLS" ON public.profiles FOR ALL USING (auth.uid() = id OR public.is_admin()) WITH CHECK (auth.uid() = id OR public.is_admin());
 
@@ -254,22 +118,59 @@ DROP POLICY IF EXISTS "Permissions RLS" ON public.user_permissions;
 CREATE POLICY "Permissions RLS" ON public.user_permissions FOR ALL USING (auth.uid() = user_id OR public.is_admin()) WITH CHECK (public.is_admin());
 
 -- ====================================================================
--- AUTOMATIC PROFILE CREATION TRIGGER ON AUTH SIGNUP
+-- AUTOMATIC PROFILE & DEFAULT CATEGORIES TRIGGER ON AUTH SIGNUP
 -- ====================================================================
 
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 BEGIN
-  INSERT INTO public.profiles (id, email, full_name, role, is_active, currency, monthly_income)
+  -- Create Profile
+  INSERT INTO public.profiles (id, email, full_name, role, is_active, currency)
   VALUES (
     new.id,
     new.email,
     COALESCE(new.raw_user_meta_data->>'full_name', 'User'),
     COALESCE(new.raw_user_meta_data->>'role', 'USER'),
     true,
-    'INR',
-    0
-  );
+    'INR'
+  )
+  ON CONFLICT (id) DO UPDATE SET
+    email = EXCLUDED.email,
+    full_name = COALESCE(EXCLUDED.full_name, public.profiles.full_name);
+
+  -- Insert Default Income Categories
+  INSERT INTO public.categories (user_id, name, type, is_custom) VALUES
+    (new.id, 'Salary', 'income', false),
+    (new.id, 'Freelance', 'income', false),
+    (new.id, 'Business', 'income', false),
+    (new.id, 'Bonus', 'income', false),
+    (new.id, 'Interest', 'income', false),
+    (new.id, 'Rental Income', 'income', false),
+    (new.id, 'Other', 'income', false)
+  ON CONFLICT DO NOTHING;
+
+  -- Insert Default Expense Categories
+  INSERT INTO public.categories (user_id, name, type, is_custom) VALUES
+    (new.id, 'Food', 'expense', false),
+    (new.id, 'Groceries', 'expense', false),
+    (new.id, 'Transport', 'expense', false),
+    (new.id, 'Fuel', 'expense', false),
+    (new.id, 'Shopping', 'expense', false),
+    (new.id, 'Entertainment', 'expense', false),
+    (new.id, 'Bills', 'expense', false),
+    (new.id, 'Electricity', 'expense', false),
+    (new.id, 'Internet', 'expense', false),
+    (new.id, 'Mobile', 'expense', false),
+    (new.id, 'Rent', 'expense', false),
+    (new.id, 'Medical', 'expense', false),
+    (new.id, 'Education', 'expense', false),
+    (new.id, 'Travel', 'expense', false),
+    (new.id, 'Personal', 'expense', false),
+    (new.id, 'Family', 'expense', false),
+    (new.id, 'Subscriptions', 'expense', false),
+    (new.id, 'Other', 'expense', false)
+  ON CONFLICT DO NOTHING;
+
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;

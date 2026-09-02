@@ -1,68 +1,106 @@
 import React, { useState } from 'react';
-import { Plus, Search, Trash2, Edit2, ArrowUpRight, X, Filter } from 'lucide-react';
-import type { IncomeItem, IncomeSource } from '../types';
+import { Plus, Search, Filter, Trash2, Edit, ArrowUpRight, FolderPlus, X } from 'lucide-react';
+import type { IncomeItem, Category } from '../types';
 import { dataService } from '../services/dataService';
 import { formatINR, formatDate } from '../utils/formatters';
 
 interface IncomePageProps {
   incomes: IncomeItem[];
+  categories: Category[];
   onRefresh: () => void;
 }
 
-const SOURCES: IncomeSource[] = [
-  'Salary',
-  'Freelance',
-  'Business',
-  'Bonus',
-  'Interest',
-  'Rental',
-  'Other',
-];
-
-export const IncomePage: React.FC<IncomePageProps> = ({ incomes, onRefresh }) => {
+export const IncomePage: React.FC<IncomePageProps> = ({
+  incomes,
+  categories,
+  onRefresh,
+}) => {
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedSource, setSelectedSource] = useState<string>('All');
+  const [categoryFilter, setCategoryFilter] = useState('all');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+
+  // Add/Edit Income Modal
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<IncomeItem | null>(null);
-
-  // Form State
-  const [source, setSource] = useState<IncomeSource>('Salary');
   const [amount, setAmount] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const [categoryName, setCategoryName] = useState('Salary');
   const [description, setDescription] = useState('');
-  const [isRecurring, setIsRecurring] = useState(true);
   const [notes, setNotes] = useState('');
+
+  // Add Custom Category Modal
+  const [isCatModalOpen, setIsCatModalOpen] = useState(false);
+  const [newCatName, setNewCatName] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+
+  const incomeCategories = categories.filter((c) => c.type === 'income');
 
   const filteredIncomes = incomes.filter((item) => {
     const matchesSearch =
       item.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.source.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesSource = selectedSource === 'All' || item.source === selectedSource;
-    return matchesSearch && matchesSource;
+      item.category_name.toLowerCase().includes(searchTerm.toLowerCase());
+
+    const matchesCategory =
+      categoryFilter === 'all' || item.category_name.toLowerCase() === categoryFilter.toLowerCase();
+
+    const matchesStartDate = !startDate || item.date >= startDate;
+    const matchesEndDate = !endDate || item.date <= endDate;
+
+    return matchesSearch && matchesCategory && matchesStartDate && matchesEndDate;
   });
 
-  const totalIncome = filteredIncomes.reduce((acc, curr) => acc + curr.amount, 0);
+  const totalIncome = filteredIncomes.reduce((sum, item) => sum + (item.amount || 0), 0);
 
   const handleOpenAdd = () => {
     setEditingItem(null);
-    setSource('Salary');
     setAmount('');
     setDate(new Date().toISOString().split('T')[0]);
+    setCategoryName(incomeCategories[0]?.name || 'Salary');
     setDescription('');
-    setIsRecurring(true);
     setNotes('');
     setIsModalOpen(true);
   };
 
   const handleOpenEdit = (item: IncomeItem) => {
     setEditingItem(item);
-    setSource(item.source);
     setAmount(item.amount.toString());
     setDate(item.date);
+    setCategoryName(item.category_name);
     setDescription(item.description);
-    setIsRecurring(item.is_recurring);
     setNotes(item.notes || '');
     setIsModalOpen(true);
+  };
+
+  const handleSaveIncome = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const numAmt = parseFloat(amount);
+    if (isNaN(numAmt) || numAmt <= 0) {
+      alert('Please enter a valid positive income amount.');
+      return;
+    }
+
+    setIsSaving(true);
+    if (editingItem) {
+      await dataService.updateIncome(editingItem.id, {
+        amount: numAmt,
+        date,
+        category_name: categoryName,
+        description,
+        notes,
+      });
+    } else {
+      await dataService.addIncome({
+        amount: numAmt,
+        date,
+        category_name: categoryName,
+        description,
+        notes,
+      });
+    }
+    setIsSaving(false);
+    setIsModalOpen(false);
+    onRefresh();
   };
 
   const handleDelete = async (id: string) => {
@@ -72,149 +110,165 @@ export const IncomePage: React.FC<IncomePageProps> = ({ incomes, onRefresh }) =>
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleAddCustomCategory = async (e: React.FormEvent) => {
     e.preventDefault();
-    const numAmount = parseFloat(amount);
-    if (!numAmount || numAmount < 0) return;
+    if (!newCatName.trim()) return;
 
-    if (editingItem) {
-      await dataService.updateIncome(editingItem.id, {
-        source,
-        amount: numAmount,
-        date,
-        description,
-        is_recurring: isRecurring,
-        notes,
-      });
-    } else {
-      await dataService.addIncome({
-        source,
-        amount: numAmount,
-        date,
-        description: description || `${source} Income`,
-        is_recurring: isRecurring,
-        notes,
-      });
-    }
+    const created = await dataService.addCategory({
+      name: newCatName.trim(),
+      type: 'income',
+    });
 
-    setIsModalOpen(false);
+    setNewCatName('');
+    setIsCatModalOpen(false);
+    setCategoryName(created.name);
     onRefresh();
   };
 
   return (
-    <div className="space-y-6 pb-12">
+    <div className="space-y-6 pb-16 font-sans">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
-            Income Tracker
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white flex items-center gap-2">
+            <ArrowUpRight className="h-6 w-6 text-emerald-600" />
+            <span>Income Management</span>
           </h1>
-          <p className="text-xs text-slate-500">Track all income streams (Salary, Freelance, Business & Investments)</p>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Log and categorize salary, freelance, business, and passive income sources.
+          </p>
         </div>
 
-        <button
-          onClick={handleOpenAdd}
-          className="flex items-center gap-2 rounded-2xl bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white shadow-md shadow-emerald-500/20 hover:bg-emerald-700 transition-all self-start sm:self-auto"
-        >
-          <Plus className="h-4 w-4" />
-          <span>Add Income</span>
-        </button>
-      </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setIsCatModalOpen(true)}
+            className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-100 dark:border-slate-800 dark:bg-slate-800 dark:text-slate-200"
+          >
+            <FolderPlus className="h-4 w-4 text-emerald-600" />
+            <span>+ Add Category</span>
+          </button>
 
-      {/* Summary Card & Filters */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <div className="rounded-3xl border border-slate-200/80 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          <div className="flex items-center justify-between text-emerald-600">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Total Tracked Income</span>
-            <div className="rounded-xl bg-emerald-50 p-2 dark:bg-emerald-950/40">
-              <ArrowUpRight className="h-5 w-5" />
-            </div>
-          </div>
-          <p className="mt-2 text-2xl font-extrabold text-slate-900 dark:text-white">{formatINR(totalIncome)}</p>
-          <p className="mt-1 text-xs text-slate-500">{filteredIncomes.length} recorded entries</p>
-        </div>
-
-        <div className="rounded-3xl border border-slate-200/80 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 lg:col-span-2 flex flex-col sm:flex-row items-center gap-3">
-          <div className="relative w-full sm:w-1/2">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Search description or source..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-xs font-medium text-slate-900 outline-none focus:border-blue-600 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-            />
-          </div>
-
-          <div className="flex items-center gap-2 w-full sm:w-1/2">
-            <Filter className="h-4 w-4 text-slate-400" />
-            <select
-              value={selectedSource}
-              onChange={(e) => setSelectedSource(e.target.value)}
-              className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-2.5 px-3 text-xs font-semibold text-slate-900 outline-none focus:border-blue-600 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-            >
-              <option value="All">All Sources</option>
-              {SOURCES.map((s) => (
-                <option key={s} value={s}>{s}</option>
-              ))}
-            </select>
-          </div>
+          <button
+            onClick={handleOpenAdd}
+            className="flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white shadow hover:bg-emerald-700 transition-all min-h-[44px]"
+          >
+            <Plus className="h-4 w-4 stroke-[2.5]" />
+            <span>Add Income</span>
+          </button>
         </div>
       </div>
 
-      {/* Income List Table / Cards */}
+      {/* Total Card */}
+      <div className="rounded-3xl border border-emerald-200 bg-emerald-50/60 p-6 dark:border-emerald-950 dark:bg-emerald-950/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div>
+          <span className="text-xs font-bold uppercase tracking-wider text-emerald-800 dark:text-emerald-300">
+            Total Income ({filteredIncomes.length} Entries)
+          </span>
+          <p className="text-3xl font-extrabold text-emerald-950 dark:text-emerald-200 mt-1">
+            {formatINR(totalIncome)}
+          </p>
+        </div>
+      </div>
+
+      {/* Filter Toolbar */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 bg-white p-4 rounded-2xl border border-slate-200/80 dark:bg-slate-900 dark:border-slate-800 shadow-sm">
+        {/* Search Input */}
+        <div className="relative flex items-center">
+          <Search className="absolute left-3 h-4 w-4 text-slate-400" />
+          <input
+            type="text"
+            placeholder="Search income description..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-9 pr-3 text-xs font-semibold text-slate-900 outline-none focus:border-blue-600 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+          />
+        </div>
+
+        {/* Category Filter */}
+        <div className="relative flex items-center">
+          <Filter className="absolute left-3 h-4 w-4 text-slate-400" />
+          <select
+            value={categoryFilter}
+            onChange={(e) => setCategoryFilter(e.target.value)}
+            className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-9 pr-3 text-xs font-semibold text-slate-900 outline-none focus:border-blue-600 dark:border-slate-700 dark:bg-slate-800 dark:text-white cursor-pointer"
+          >
+            <option value="all">All Income Categories</option>
+            {incomeCategories.map((c) => (
+              <option key={c.id} value={c.name}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Start Date */}
+        <div>
+          <input
+            type="date"
+            value={startDate}
+            onChange={(e) => setStartDate(e.target.value)}
+            className="w-full rounded-xl border border-slate-200 bg-slate-50 p-2.5 text-xs font-semibold text-slate-900 outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+          />
+        </div>
+
+        {/* End Date */}
+        <div>
+          <input
+            type="date"
+            value={endDate}
+            onChange={(e) => setEndDate(e.target.value)}
+            className="w-full rounded-xl border border-slate-200 bg-slate-50 p-2.5 text-xs font-semibold text-slate-900 outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+          />
+        </div>
+      </div>
+
+      {/* Income Records List / Table */}
       <div className="rounded-3xl border border-slate-200/80 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
             <thead className="border-b border-slate-100 bg-slate-50/50 text-[11px] font-bold uppercase text-slate-400 dark:border-slate-800 dark:bg-slate-800/40">
               <tr>
-                <th className="px-6 py-3.5">Source & Description</th>
-                <th className="px-6 py-3.5">Date</th>
-                <th className="px-6 py-3.5">Recurring</th>
-                <th className="px-6 py-3.5 text-right">Amount</th>
-                <th className="px-6 py-3.5 text-right">Actions</th>
+                <th className="px-6 py-4">Date</th>
+                <th className="px-6 py-4">Category</th>
+                <th className="px-6 py-4">Description</th>
+                <th className="px-6 py-4">Amount</th>
+                <th className="px-6 py-4 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
               {filteredIncomes.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="py-8 text-center text-slate-400">
-                    No income records found.
+                  <td colSpan={5} className="py-12 text-center text-slate-400">
+                    No income records found matching criteria.
                   </td>
                 </tr>
               ) : (
-                filteredIncomes.map((inc) => (
-                  <tr key={inc.id} className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors">
+                filteredIncomes.map((item) => (
+                  <tr key={item.id} className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors">
+                    <td className="px-6 py-4 font-semibold text-slate-600 dark:text-slate-400">{formatDate(item.date)}</td>
                     <td className="px-6 py-4">
-                      <div className="font-bold text-slate-900 dark:text-white">{inc.source}</div>
-                      <div className="text-[11px] text-slate-500">{inc.description}</div>
+                      <span className="rounded-full bg-emerald-100 px-3 py-1 text-[11px] font-extrabold text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+                        {item.category_name}
+                      </span>
                     </td>
-                    <td className="px-6 py-4 text-slate-600 dark:text-slate-300">{formatDate(inc.date)}</td>
-                    <td className="px-6 py-4">
-                      {inc.is_recurring ? (
-                        <span className="rounded-full bg-emerald-50 px-2.5 py-0.5 text-[10px] font-bold text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
-                          Monthly Auto
-                        </span>
-                      ) : (
-                        <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-[10px] font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-400">
-                          One-time
-                        </span>
-                      )}
+                    <td className="px-6 py-4 font-bold text-slate-900 dark:text-white">
+                      {item.description || 'Income'}
+                      {item.notes && <p className="text-[11px] text-slate-400 font-normal">{item.notes}</p>}
                     </td>
-                    <td className="px-6 py-4 text-right font-extrabold text-emerald-600 dark:text-emerald-400">
-                      +{formatINR(inc.amount)}
+                    <td className="px-6 py-4 font-extrabold text-emerald-600 dark:text-emerald-400 text-sm">
+                      {formatINR(item.amount)}
                     </td>
                     <td className="px-6 py-4 text-right">
                       <div className="flex items-center justify-end gap-2">
                         <button
-                          onClick={() => handleOpenEdit(inc)}
-                          className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800"
+                          onClick={() => handleOpenEdit(item)}
+                          className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-blue-600 dark:hover:bg-slate-800 min-h-[44px] min-w-[44px] flex items-center justify-center"
                         >
-                          <Edit2 className="h-4 w-4" />
+                          <Edit className="h-4 w-4" />
                         </button>
                         <button
-                          onClick={() => handleDelete(inc.id)}
-                          className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/30"
+                          onClick={() => handleDelete(item.id)}
+                          className="rounded-lg p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/30 min-h-[44px] min-w-[44px] flex items-center justify-center"
                         >
                           <Trash2 className="h-4 w-4" />
                         </button>
@@ -230,76 +284,93 @@ export const IncomePage: React.FC<IncomePageProps> = ({ incomes, onRefresh }) =>
 
       {/* Add / Edit Income Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm">
           <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
             <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800">
               <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                {editingItem ? 'Edit Income' : 'Add New Income'}
+                {editingItem ? 'Edit Income' : 'Add Income Entry'}
               </h3>
               <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-600">
                 <X className="h-5 w-5" />
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="mt-4 space-y-4">
+            <form onSubmit={handleSaveIncome} className="mt-4 space-y-4">
               <div>
-                <label className="text-xs font-semibold text-slate-500">Income Source</label>
-                <select
-                  value={source}
-                  onChange={(e) => setSource(e.target.value as IncomeSource)}
-                  className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 p-2.5 text-xs font-bold text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-                >
-                  {SOURCES.map((s) => (
-                    <option key={s} value={s}>{s}</option>
-                  ))}
-                </select>
+                <label className="text-xs font-semibold text-slate-500">Amount (₹) *</label>
+                <div className="relative mt-1">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-400">₹</span>
+                  <input
+                    type="number"
+                    step="any"
+                    inputMode="decimal"
+                    required
+                    placeholder="0.00"
+                    value={amount}
+                    onChange={(e) => setAmount(e.target.value)}
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-8 pr-3 text-sm font-bold text-slate-900 outline-none focus:border-emerald-600 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                  />
+                </div>
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-slate-500">Amount (₹) *</label>
+                <label className="text-xs font-semibold text-slate-500">Date *</label>
                 <input
-                  type="number"
+                  type="date"
                   required
-                  placeholder="e.g. 91000"
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
-                  className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 p-2.5 text-sm font-bold text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                  value={date}
+                  onChange={(e) => setDate(e.target.value)}
+                  className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 p-2.5 text-xs font-bold text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
                 />
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-slate-500">Income Category *</label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsModalOpen(false);
+                      setIsCatModalOpen(true);
+                    }}
+                    className="text-[11px] font-bold text-emerald-600 hover:underline"
+                  >
+                    + Add New Category
+                  </button>
+                </div>
+                <select
+                  value={categoryName}
+                  onChange={(e) => setCategoryName(e.target.value)}
+                  className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 p-2.5 text-xs font-bold text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-white cursor-pointer"
+                >
+                  {incomeCategories.map((c) => (
+                    <option key={c.id} value={c.name}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div>
                 <label className="text-xs font-semibold text-slate-500">Description</label>
                 <input
                   type="text"
-                  placeholder="e.g. Monthly Salary, Client Project"
+                  placeholder="e.g. Monthly Salary, Freelance project"
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 p-2.5 text-xs font-medium text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                  className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 p-2.5 text-xs font-bold text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
                 />
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-slate-500">Date</label>
-                <input
-                  type="date"
-                  required
-                  value={date}
-                  onChange={(e) => setDate(e.target.value)}
-                  className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 p-2.5 text-xs font-medium text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                <label className="text-xs font-semibold text-slate-500">Notes (Optional)</label>
+                <textarea
+                  rows={2}
+                  placeholder="Additional details..."
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 p-2.5 text-xs font-semibold text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
                 />
-              </div>
-
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="recurring"
-                  checked={isRecurring}
-                  onChange={(e) => setIsRecurring(e.target.checked)}
-                  className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
-                />
-                <label htmlFor="recurring" className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                  Monthly Recurring Income
-                </label>
               </div>
 
               <div className="flex gap-3 pt-2">
@@ -312,9 +383,57 @@ export const IncomePage: React.FC<IncomePageProps> = ({ incomes, onRefresh }) =>
                 </button>
                 <button
                   type="submit"
+                  disabled={isSaving}
                   className="w-1/2 rounded-xl bg-emerald-600 py-2.5 text-xs font-bold text-white shadow hover:bg-emerald-700"
                 >
-                  Save Income
+                  {isSaving ? 'Saving...' : editingItem ? 'Update Income' : 'Save Income'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Add Custom Category Modal */}
+      {isCatModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-3xl bg-white p-6 shadow-2xl dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <FolderPlus className="h-4 w-4 text-emerald-600" />
+                <span>Add Income Category</span>
+              </h3>
+              <button onClick={() => setIsCatModalOpen(false)} className="text-slate-400 hover:text-slate-600">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleAddCustomCategory} className="mt-4 space-y-4">
+              <div>
+                <label className="text-xs font-semibold text-slate-500">Category Name *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Side Business, Consulting"
+                  value={newCatName}
+                  onChange={(e) => setNewCatName(e.target.value)}
+                  className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 p-2.5 text-xs font-bold text-slate-900 outline-none focus:border-emerald-600 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                />
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsCatModalOpen(false)}
+                  className="w-1/2 rounded-xl border border-slate-200 py-2.5 text-xs font-semibold text-slate-600 dark:border-slate-700 dark:text-slate-300"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="w-1/2 rounded-xl bg-emerald-600 py-2.5 text-xs font-bold text-white shadow hover:bg-emerald-700"
+                >
+                  Save Category
                 </button>
               </div>
             </form>

@@ -1,30 +1,29 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Navbar } from './Navbar';
 import { Sidebar } from './Sidebar';
 import { MobileNav } from './MobileNav';
-import { AddExpenseModal } from '../modals/AddExpenseModal';
 
 interface LayoutProps {
   children: React.ReactNode;
   activePage: string;
   onNavigate: (page: string) => void;
   onRefreshData: () => void;
+  onOpenAddModal: () => void;
 }
 
 export const Layout: React.FC<LayoutProps> = ({
   children,
   activePage,
   onNavigate,
-  onRefreshData,
+  onRefreshData: _onRefreshData,
+  onOpenAddModal,
 }) => {
-  const [isAddExpenseOpen, setIsAddExpenseOpen] = useState(false);
-
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors">
       <Navbar
         activePage={activePage}
         onNavigate={onNavigate}
-        onOpenAddExpense={() => setIsAddExpenseOpen(true)}
+        onOpenAddExpense={onOpenAddModal}
       />
 
       <div className="flex">
@@ -38,13 +37,7 @@ export const Layout: React.FC<LayoutProps> = ({
       <MobileNav
         activePage={activePage}
         onNavigate={onNavigate}
-        onOpenAddExpense={() => setIsAddExpenseOpen(true)}
-      />
-
-      <AddExpenseModal
-        isOpen={isAddExpenseOpen}
-        onClose={() => setIsAddExpenseOpen(false)}
-        onSuccess={onRefreshData}
+        onOpenAddModal={onOpenAddModal}
       />
     </div>
   );

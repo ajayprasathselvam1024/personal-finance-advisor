@@ -1,134 +1,298 @@
 import React, { useState } from 'react';
-import { Search } from 'lucide-react';
-import type { IncomeItem, ExpenseItem } from '../types';
+import {
+  Search,
+  FileSpreadsheet,
+  Trash2,
+  ArrowUpRight,
+  ArrowDownLeft,
+  Receipt,
+  ChevronLeft,
+  ChevronRight,
+} from 'lucide-react';
+import type { IncomeItem, ExpenseItem, UnifiedTransaction, Category } from '../types';
+import { dataService } from '../services/dataService';
+import { exportTransactionsToExcel } from '../services/excelService';
 import { formatINR, formatDate } from '../utils/formatters';
 
 interface TransactionsPageProps {
   incomes: IncomeItem[];
   expenses: ExpenseItem[];
+  categories: Category[];
+  onRefresh: () => void;
 }
 
-export const TransactionsPage: React.FC<TransactionsPageProps> = ({ incomes, expenses }) => {
-  const [search, setSearch] = useState('');
-  const [filterType, setFilterType] = useState<'all' | 'income' | 'expense'>('all');
+export const TransactionsPage: React.FC<TransactionsPageProps> = ({
+  incomes,
+  expenses,
+  categories: _categories,
+  onRefresh,
+}) => {
+  const [searchTerm, setSearchTerm] = useState('');
+  const [typeFilter, setTypeFilter] = useState<'all' | 'income' | 'expense'>('all');
+  const [categoryFilter, setCategoryFilter] = useState('all');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
 
-  const unifiedList = [
+  // Pagination State
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
+
+  // Combine into unified list
+  const unifiedTransactions: UnifiedTransaction[] = [
     ...incomes.map((i) => ({
       id: i.id,
-      title: i.source,
-      subtitle: i.description,
-      amount: i.amount,
+      user_id: i.user_id,
       type: 'income' as const,
+      amount: i.amount,
       date: i.date,
-      category: i.source,
+      category_name: i.category_name,
+      description: i.description,
+      notes: i.notes,
+      created_at: i.created_at,
     })),
     ...expenses.map((e) => ({
       id: e.id,
-      title: e.category_name,
-      subtitle: e.merchant || e.payment_method,
-      amount: e.amount,
+      user_id: e.user_id,
       type: 'expense' as const,
+      amount: e.amount,
       date: e.date,
-      category: e.category_name,
+      category_name: e.category_name,
+      description: e.description,
+      payment_method: e.payment_method,
+      notes: e.notes,
+      created_at: e.created_at,
     })),
-  ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  ];
 
-  const filtered = unifiedList.filter((t) => {
-    const matchesSearch =
-      t.title.toLowerCase().includes(search.toLowerCase()) ||
-      t.subtitle.toLowerCase().includes(search.toLowerCase());
-    const matchesType = filterType === 'all' || t.type === filterType;
-    return matchesSearch && matchesType;
-  });
+  // Filtering & Sorting
+  const filtered = unifiedTransactions
+    .filter((t) => {
+      const matchesType = typeFilter === 'all' || t.type === typeFilter;
+
+      const matchesSearch =
+        t.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        t.category_name.toLowerCase().includes(searchTerm.toLowerCase());
+
+      const matchesCategory =
+        categoryFilter === 'all' || t.category_name.toLowerCase() === categoryFilter.toLowerCase();
+
+      const matchesStartDate = !startDate || t.date >= startDate;
+      const matchesEndDate = !endDate || t.date <= endDate;
+
+      return matchesType && matchesSearch && matchesCategory && matchesStartDate && matchesEndDate;
+    })
+    .sort((a, b) => {
+      if (sortOrder === 'desc') {
+        return b.date.localeCompare(a.date);
+      }
+      return a.date.localeCompare(b.date);
+    });
+
+  // Pagination math
+  const totalPages = Math.ceil(filtered.length / itemsPerPage) || 1;
+  const paginatedItems = filtered.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+
+  const handleDelete = async (t: UnifiedTransaction) => {
+    if (confirm(`Are you sure you want to delete this ${t.type} record?`)) {
+      if (t.type === 'income') {
+        await dataService.deleteIncome(t.id);
+      } else {
+        await dataService.deleteExpense(t.id);
+      }
+      onRefresh();
+    }
+  };
+
+  const handleExportExcel = () => {
+    exportTransactionsToExcel(filtered, 'Unified_Transactions');
+  };
 
   return (
-    <div className="space-y-6 pb-12">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
-          Unified Transaction History
-        </h1>
-        <p className="text-xs text-slate-500">Comprehensive master ledger of all income and expense items</p>
+    <div className="space-y-6 pb-16 font-sans">
+      {/* Header & Export Excel */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white flex items-center gap-2">
+            <Receipt className="h-6 w-6 text-blue-600" />
+            <span>Unified Transactions Ledger</span>
+          </h1>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Complete searchable history of all personal income and expense transactions.
+          </p>
+        </div>
+
+        <button
+          onClick={handleExportExcel}
+          className="flex items-center gap-1.5 rounded-xl border border-emerald-600/30 bg-emerald-50 px-4 py-2.5 text-xs font-bold text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-300 shadow-sm transition-all min-h-[44px]"
+        >
+          <FileSpreadsheet className="h-4 w-4 text-emerald-600" />
+          <span>Export Excel (.xlsx)</span>
+        </button>
       </div>
 
-      {/* Filters */}
-      <div className="flex flex-col sm:flex-row items-center gap-3">
-        <div className="relative w-full sm:w-1/2">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+      {/* Filters Toolbar */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 bg-white p-4 rounded-2xl border border-slate-200/80 dark:bg-slate-900 dark:border-slate-800 shadow-sm">
+        {/* Search */}
+        <div className="relative flex items-center">
+          <Search className="absolute left-3 h-4 w-4 text-slate-400" />
           <input
             type="text"
-            placeholder="Search description, merchant, or category..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-xs font-medium text-slate-900 outline-none focus:border-blue-600 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+            placeholder="Search description or category..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-9 pr-3 text-xs font-semibold text-slate-900 outline-none focus:border-blue-600 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
           />
         </div>
 
-        <div className="flex items-center gap-2 w-full sm:w-1/2">
-          <button
-            onClick={() => setFilterType('all')}
-            className={`w-1/3 rounded-2xl py-2 text-xs font-bold transition-all ${
-              filterType === 'all' ? 'bg-blue-600 text-white shadow' : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'
-            }`}
+        {/* Type Filter */}
+        <div>
+          <select
+            value={typeFilter}
+            onChange={(e) => setTypeFilter(e.target.value as any)}
+            className="w-full rounded-xl border border-slate-200 bg-slate-50 p-2.5 text-xs font-semibold text-slate-900 outline-none focus:border-blue-600 dark:border-slate-700 dark:bg-slate-800 dark:text-white cursor-pointer"
           >
-            All ({unifiedList.length})
-          </button>
-          <button
-            onClick={() => setFilterType('income')}
-            className={`w-1/3 rounded-2xl py-2 text-xs font-bold transition-all ${
-              filterType === 'income' ? 'bg-emerald-600 text-white shadow' : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'
-            }`}
+            <option value="all">All Types (Income & Expense)</option>
+            <option value="income">Income Only</option>
+            <option value="expense">Expenses Only</option>
+          </select>
+        </div>
+
+        {/* Category Filter */}
+        <div>
+          <select
+            value={categoryFilter}
+            onChange={(e) => setCategoryFilter(e.target.value)}
+            className="w-full rounded-xl border border-slate-200 bg-slate-50 p-2.5 text-xs font-semibold text-slate-900 outline-none focus:border-blue-600 dark:border-slate-700 dark:bg-slate-800 dark:text-white cursor-pointer"
           >
-            Incomes
-          </button>
-          <button
-            onClick={() => setFilterType('expense')}
-            className={`w-1/3 rounded-2xl py-2 text-xs font-bold transition-all ${
-              filterType === 'expense' ? 'bg-rose-600 text-white shadow' : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'
-            }`}
+            <option value="all">All Categories</option>
+            {_categories.map((c) => (
+              <option key={c.id} value={c.name}>
+                {c.name} ({c.type})
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Start Date */}
+        <div>
+          <input
+            type="date"
+            value={startDate}
+            onChange={(e) => setStartDate(e.target.value)}
+            className="w-full rounded-xl border border-slate-200 bg-slate-50 p-2.5 text-xs font-semibold text-slate-900 outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+          />
+        </div>
+
+        {/* End Date */}
+        <div>
+          <input
+            type="date"
+            value={endDate}
+            onChange={(e) => setEndDate(e.target.value)}
+            className="w-full rounded-xl border border-slate-200 bg-slate-50 p-2.5 text-xs font-semibold text-slate-900 outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+          />
+        </div>
+
+        {/* Sort Order */}
+        <div>
+          <select
+            value={sortOrder}
+            onChange={(e) => setSortOrder(e.target.value as any)}
+            className="w-full rounded-xl border border-slate-200 bg-slate-50 p-2.5 text-xs font-semibold text-slate-900 outline-none focus:border-blue-600 dark:border-slate-700 dark:bg-slate-800 dark:text-white cursor-pointer"
           >
-            Expenses
-          </button>
+            <option value="desc">Newest First</option>
+            <option value="asc">Oldest First</option>
+          </select>
         </div>
       </div>
 
-      {/* Transaction Table */}
+      {/* Transactions Table */}
       <div className="rounded-3xl border border-slate-200/80 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
             <thead className="border-b border-slate-100 bg-slate-50/50 text-[11px] font-bold uppercase text-slate-400 dark:border-slate-800 dark:bg-slate-800/40">
               <tr>
-                <th className="px-6 py-3.5">Type & Title</th>
-                <th className="px-6 py-3.5">Details</th>
-                <th className="px-6 py-3.5">Date</th>
-                <th className="px-6 py-3.5 text-right">Amount</th>
+                <th className="px-6 py-4">Date</th>
+                <th className="px-6 py-4">Type</th>
+                <th className="px-6 py-4">Category</th>
+                <th className="px-6 py-4">Description</th>
+                <th className="px-6 py-4">Payment Method</th>
+                <th className="px-6 py-4">Amount</th>
+                <th className="px-6 py-4 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
-              {filtered.map((t) => (
-                <tr key={t.id} className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors">
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-2">
-                      <span
-                        className={`rounded-full px-2 py-0.5 text-[9px] font-extrabold uppercase ${
-                          t.type === 'income' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
-                        }`}
-                      >
-                        {t.type}
-                      </span>
-                      <span className="font-bold text-slate-900 dark:text-white">{t.title}</span>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 text-slate-500">{t.subtitle}</td>
-                  <td className="px-6 py-4 text-slate-600 dark:text-slate-300">{formatDate(t.date)}</td>
-                  <td className="px-6 py-4 text-right font-extrabold">
-                    <span className={t.type === 'income' ? 'text-emerald-600' : 'text-rose-600'}>
-                      {t.type === 'income' ? `+${formatINR(t.amount)}` : `-${formatINR(t.amount)}`}
-                    </span>
+              {paginatedItems.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="py-12 text-center text-slate-400">
+                    No transaction records match criteria.
                   </td>
                 </tr>
-              ))}
+              ) : (
+                paginatedItems.map((item) => (
+                  <tr key={item.id} className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors">
+                    <td className="px-6 py-4 font-semibold text-slate-600 dark:text-slate-400">{formatDate(item.date)}</td>
+                    <td className="px-6 py-4">
+                      <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-extrabold uppercase ${
+                        item.type === 'income'
+                          ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
+                          : 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300'
+                      }`}>
+                        {item.type === 'income' ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownLeft className="h-3 w-3" />}
+                        <span>{item.type}</span>
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 font-semibold text-slate-900 dark:text-white">{item.category_name}</td>
+                    <td className="px-6 py-4 font-bold text-slate-900 dark:text-white">
+                      {item.description || item.type}
+                      {item.notes && <p className="text-[11px] text-slate-400 font-normal">{item.notes}</p>}
+                    </td>
+                    <td className="px-6 py-4 text-slate-600 dark:text-slate-300">{item.payment_method || 'N/A'}</td>
+                    <td className={`px-6 py-4 font-extrabold text-sm ${
+                      item.type === 'income' ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
+                    }`}>
+                      {item.type === 'income' ? '+' : '-'}{formatINR(item.amount)}
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      <button
+                        onClick={() => handleDelete(item)}
+                        className="rounded-lg p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/30 min-h-[44px] min-w-[44px] inline-flex items-center justify-center"
+                        title="Delete Transaction"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
+        </div>
+
+        {/* Pagination Bar */}
+        <div className="flex items-center justify-between px-6 py-4 border-t border-slate-100 dark:border-slate-800 text-xs">
+          <span className="text-slate-500 font-medium">
+            Showing Page <span className="font-bold text-slate-900 dark:text-white">{currentPage}</span> of {totalPages} ({filtered.length} total)
+          </span>
+
+          <div className="flex items-center gap-2">
+            <button
+              disabled={currentPage <= 1}
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              className="rounded-xl border border-slate-200 p-2 text-slate-600 hover:bg-slate-100 disabled:opacity-40 dark:border-slate-800 dark:text-slate-300 min-h-[44px] min-w-[44px] flex items-center justify-center"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+
+            <button
+              disabled={currentPage >= totalPages}
+              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              className="rounded-xl border border-slate-200 p-2 text-slate-600 hover:bg-slate-100 disabled:opacity-40 dark:border-slate-800 dark:text-slate-300 min-h-[44px] min-w-[44px] flex items-center justify-center"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          </div>
         </div>
       </div>
     </div>

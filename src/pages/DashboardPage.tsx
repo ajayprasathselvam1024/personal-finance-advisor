@@ -1,504 +1,430 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   ArrowUpRight,
   ArrowDownLeft,
-  CreditCard,
-  Coins,
-  PiggyBank,
   Wallet,
-  TrendingUp,
   Calendar,
-  BrainCircuit,
-  ArrowRight,
-  Flame,
-  PieChart as PieChartIcon,
+  FileSpreadsheet,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
   BarChart,
   Bar,
-  PieChart,
-  Pie,
-  Cell,
   XAxis,
   YAxis,
   Tooltip,
+  PieChart,
+  Pie,
+  Cell,
+  LineChart,
+  Line,
+  CartesianGrid,
+  Legend,
 } from 'recharts';
-import type {
-  IncomeItem,
-  ExpenseItem,
-  Loan,
-  GoldLoan,
-  SavingsItem,
-  InvestmentItem,
-  FinancialGoal,
-  FinancialSummary,
-  HealthScoreBreakdown,
-  AdvisorRecommendation,
-} from '../types';
+import type { FinancialSummary, IncomeItem, ExpenseItem } from '../types';
 import { formatINR } from '../utils/formatters';
+import { exportTransactionsToExcel } from '../services/excelService';
 
 interface DashboardPageProps {
   summary: FinancialSummary;
-  healthScore: HealthScoreBreakdown;
-  advisorInsights: AdvisorRecommendation[];
   incomes: IncomeItem[];
   expenses: ExpenseItem[];
-  loans: Loan[];
-  goldLoans: GoldLoan[];
-  savings: SavingsItem[];
-  investments: InvestmentItem[];
-  goals: FinancialGoal[];
   onNavigate: (page: string) => void;
-  onOpenAddExpense?: () => void;
+  onOpenAddModal: (type?: 'income' | 'expense') => void;
 }
+
+const COLORS = [
+  '#3B82F6',
+  '#10B981',
+  '#F59E0B',
+  '#EF4444',
+  '#8B5CF6',
+  '#EC4899',
+  '#06B6D4',
+  '#6366F1',
+  '#14B8A6',
+];
 
 export const DashboardPage: React.FC<DashboardPageProps> = ({
   summary,
-  healthScore,
-  advisorInsights,
+  incomes,
   expenses,
-  loans,
-  goldLoans,
-  goals,
   onNavigate,
+  onOpenAddModal,
 }) => {
-  // Expense Category breakdown for Pie Chart
-  const categoryMap: Record<string, number> = {};
-  expenses.forEach((e) => {
-    categoryMap[e.category_name] = (categoryMap[e.category_name] || 0) + e.amount;
+  const [selectedMonth, setSelectedMonth] = useState<string>('all');
+
+  // Filter incomes and expenses by month if selected
+  const filteredIncomes = incomes.filter((item) => {
+    if (selectedMonth === 'all') return true;
+    return item.date?.startsWith(selectedMonth);
   });
 
-  const categoryPieData = Object.entries(categoryMap).map(([name, value]) => ({
-    name,
-    value,
-  }));
+  const filteredExpenses = expenses.filter((item) => {
+    if (selectedMonth === 'all') return true;
+    return item.date?.startsWith(selectedMonth);
+  });
 
-  const COLORS = ['#3B82F6', '#EF4444', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#06B6D4', '#64748B'];
+  const filteredTotalIncome = filteredIncomes.reduce((s, i) => s + (i.amount || 0), 0);
+  const filteredTotalExpense = filteredExpenses.reduce((s, e) => s + (e.amount || 0), 0);
+  const filteredBalance = filteredTotalIncome - filteredTotalExpense;
 
-  // Cash Flow Monthly Mock Trend for Bar/Area chart
-  const cashFlowTrend = [
-    { month: 'Mar', income: summary.monthlyIncome, expense: summary.monthlyExpenses * 0.9, emi: summary.monthlyEmi },
-    { month: 'Apr', income: summary.monthlyIncome, expense: summary.monthlyExpenses * 1.05, emi: summary.monthlyEmi },
-    { month: 'May', income: summary.monthlyIncome, expense: summary.monthlyExpenses * 0.95, emi: summary.monthlyEmi },
-    { month: 'Jun', income: summary.monthlyIncome, expense: summary.monthlyExpenses * 1.1, emi: summary.monthlyEmi },
-    { month: 'Jul', income: summary.monthlyIncome, expense: summary.monthlyExpenses * 0.98, emi: summary.monthlyEmi },
-    { month: 'Aug', income: summary.monthlyIncome, expense: summary.monthlyExpenses, emi: summary.monthlyEmi },
-  ];
+  // Expense by Category Pie Data
+  const expenseCatMap: Record<string, number> = {};
+  filteredExpenses.forEach((e) => {
+    expenseCatMap[e.category_name] = (expenseCatMap[e.category_name] || 0) + e.amount;
+  });
+  const expensePieData = Object.entries(expenseCatMap).map(([name, value]) => ({ name, value }));
 
-  // Active Loans & Gold Loan Dues
-  const activeLoans = loans.filter((l) => l.status === 'active');
-  const activeGoldLoans = goldLoans.filter((g) => g.status === 'active');
+  // Income by Category Pie Data
+  const incomeCatMap: Record<string, number> = {};
+  filteredIncomes.forEach((i) => {
+    incomeCatMap[i.category_name] = (incomeCatMap[i.category_name] || 0) + i.amount;
+  });
+  const incomePieData = Object.entries(incomeCatMap).map(([name, value]) => ({ name, value }));
+
+  // Monthly Trend Line Chart Data
+  const monthMap: Record<string, { income: number; expense: number }> = {};
+  incomes.forEach((i) => {
+    if (!i.date) return;
+    const m = i.date.substring(0, 7);
+    if (!monthMap[m]) monthMap[m] = { income: 0, expense: 0 };
+    monthMap[m].income += i.amount;
+  });
+  expenses.forEach((e) => {
+    if (!e.date) return;
+    const m = e.date.substring(0, 7);
+    if (!monthMap[m]) monthMap[m] = { income: 0, expense: 0 };
+    monthMap[m].expense += e.amount;
+  });
+
+  const trendData = Object.entries(monthMap)
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .slice(-6)
+    .map(([month, val]) => ({
+      month,
+      Income: val.income,
+      Expense: val.expense,
+      Balance: val.income - val.expense,
+    }));
+
+  const handleExportAll = () => {
+    const unified = [
+      ...incomes.map((i) => ({
+        id: i.id,
+        type: 'income' as const,
+        amount: i.amount,
+        date: i.date,
+        category_name: i.category_name,
+        description: i.description,
+        notes: i.notes,
+      })),
+      ...expenses.map((e) => ({
+        id: e.id,
+        type: 'expense' as const,
+        amount: e.amount,
+        date: e.date,
+        category_name: e.category_name,
+        description: e.description,
+        payment_method: e.payment_method,
+        notes: e.notes,
+      })),
+    ].sort((a, b) => b.date.localeCompare(a.date));
+
+    exportTransactionsToExcel(unified, 'Dashboard_Summary');
+  };
 
   return (
-    <div className="space-y-6 pb-12">
-      {/* Welcome & AI Advisor Banner */}
-      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-blue-900 via-indigo-900 to-slate-900 p-6 sm:p-8 text-white shadow-xl">
-        <div className="relative z-10 flex flex-col md:flex-row md:items-center md:justify-between gap-6">
-          <div>
-            <div className="inline-flex items-center gap-2 rounded-full bg-blue-500/20 px-3.5 py-1 text-xs font-bold text-blue-300 border border-blue-400/30">
-              <BrainCircuit className="h-4 w-4" />
-              <span>AI Financial Advisor Active</span>
-            </div>
-            <h1 className="mt-3 text-2xl sm:text-3xl font-extrabold tracking-tight">
-              Monthly Cash Flow Overview
-            </h1>
-            <p className="mt-1 text-xs sm:text-sm text-slate-300 max-w-xl">
-              Track your income, EMIs, gold loan payments, and investments in real-time.
-            </p>
+    <div className="space-y-6 pb-16 font-sans">
+      {/* Header Banner & Month Filter */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
+            Dashboard Overview
+          </h1>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Track personal cash flow, monthly spending, and net surplus in real-time.
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2">
+          {/* Month Filter */}
+          <div className="relative flex items-center bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-1.5 shadow-sm">
+            <Calendar className="h-4 w-4 text-slate-400 mr-2" />
+            <select
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(e.target.value)}
+              className="bg-transparent text-xs font-bold text-slate-900 dark:text-white outline-none cursor-pointer"
+            >
+              <option value="all">All Time</option>
+              <option value="2026-09">September 2026</option>
+              <option value="2026-08">August 2026</option>
+              <option value="2026-07">July 2026</option>
+            </select>
           </div>
 
-          <div className="flex items-center gap-4 bg-white/10 p-4 rounded-2xl border border-white/10 backdrop-blur-md">
-            <div>
-              <p className="text-[11px] font-semibold text-slate-300 uppercase">Health Score</p>
-              <div className="flex items-baseline gap-2">
-                <span className="text-3xl font-extrabold text-white">
-                  {summary.monthlyIncome === 0 && summary.monthlyExpenses === 0 ? '0' : healthScore.score}
-                </span>
-                <span className={`text-xs font-bold ${summary.monthlyIncome === 0 && summary.monthlyExpenses === 0 ? 'text-amber-300' : 'text-emerald-400'}`}>
-                  / 100 ({summary.monthlyIncome === 0 && summary.monthlyExpenses === 0 ? 'No Data' : healthScore.rating})
-                </span>
-              </div>
-            </div>
-            <button
-              onClick={() => onNavigate('health-score')}
-              className="rounded-xl bg-white px-3.5 py-2 text-xs font-bold text-slate-900 hover:bg-slate-100 transition-all shadow"
-            >
-              Analyze
-            </button>
-          </div>
+          {/* Export Excel Button */}
+          <button
+            onClick={handleExportAll}
+            className="flex items-center gap-1.5 rounded-xl border border-emerald-600/30 bg-emerald-50 px-3.5 py-2 text-xs font-bold text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-300 shadow-sm transition-all"
+          >
+            <FileSpreadsheet className="h-4 w-4 text-emerald-600" />
+            <span>Export Excel</span>
+          </button>
         </div>
       </div>
 
-      {/* Top 8 Summary Metric Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
-        {/* 1. Monthly Income */}
-        <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 card-hover">
+      {/* 6 Core Metric Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {/* 1. Total Income */}
+        <div className="rounded-3xl border border-slate-200/80 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
           <div className="flex items-center justify-between text-emerald-600 dark:text-emerald-400">
             <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-              Monthly Income
+              Total Income
             </span>
             <div className="rounded-xl bg-emerald-50 p-2 dark:bg-emerald-950/40">
               <ArrowUpRight className="h-4 w-4" />
             </div>
           </div>
-          <p className="mt-2 text-lg sm:text-xl font-extrabold text-slate-900 dark:text-white">
-            {formatINR(summary.monthlyIncome)}
+          <p className="mt-2 text-2xl font-extrabold text-slate-900 dark:text-white">
+            {formatINR(filteredTotalIncome)}
           </p>
-          <p className="mt-1 text-[11px] font-medium text-emerald-600">Verified inflow</p>
+          <div className="mt-2 flex items-center justify-between text-[11px] text-slate-400">
+            <span>This Month: {formatINR(summary.currentMonthIncome)}</span>
+            <button
+              onClick={() => onOpenAddModal('income')}
+              className="font-bold text-blue-600 hover:underline"
+            >
+              + Add Income
+            </button>
+          </div>
         </div>
 
-        {/* 2. Monthly Expenses */}
-        <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 card-hover">
+        {/* 2. Total Expense */}
+        <div className="rounded-3xl border border-slate-200/80 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
           <div className="flex items-center justify-between text-rose-600 dark:text-rose-400">
             <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-              Monthly Expenses
+              Total Expense
             </span>
             <div className="rounded-xl bg-rose-50 p-2 dark:bg-rose-950/40">
               <ArrowDownLeft className="h-4 w-4" />
             </div>
           </div>
-          <p className="mt-2 text-lg sm:text-xl font-extrabold text-slate-900 dark:text-white">
-            {formatINR(summary.monthlyExpenses)}
+          <p className="mt-2 text-2xl font-extrabold text-slate-900 dark:text-white">
+            {formatINR(filteredTotalExpense)}
           </p>
-          <p className="mt-1 text-[11px] font-medium text-rose-500">Fixed & variable spend</p>
-        </div>
-
-        {/* 3. Total EMI */}
-        <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 card-hover">
-          <div className="flex items-center justify-between text-indigo-600 dark:text-indigo-400">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-              Total EMI
-            </span>
-            <div className="rounded-xl bg-indigo-50 p-2 dark:bg-indigo-950/40">
-              <CreditCard className="h-4 w-4" />
-            </div>
+          <div className="mt-2 flex items-center justify-between text-[11px] text-slate-400">
+            <span>This Month: {formatINR(summary.currentMonthExpense)}</span>
+            <button
+              onClick={() => onOpenAddModal('expense')}
+              className="font-bold text-rose-600 hover:underline"
+            >
+              + Add Expense
+            </button>
           </div>
-          <p className="mt-2 text-lg sm:text-xl font-extrabold text-slate-900 dark:text-white">
-            {formatINR(summary.monthlyEmi)}
-          </p>
-          <p className="mt-1 text-[11px] font-medium text-indigo-600">{activeLoans.length} active loans</p>
         </div>
 
-        {/* 4. Gold Loan Payment */}
-        <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 card-hover">
-          <div className="flex items-center justify-between text-amber-600 dark:text-amber-400">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-              Gold Loan EMI
-            </span>
-            <div className="rounded-xl bg-amber-50 p-2 dark:bg-amber-950/40">
-              <Coins className="h-4 w-4" />
-            </div>
-          </div>
-          <p className="mt-2 text-lg sm:text-xl font-extrabold text-slate-900 dark:text-white">
-            {formatINR(summary.monthlyGoldLoanPayment)}
-          </p>
-          <p className="mt-1 text-[11px] font-medium text-amber-600">{activeGoldLoans.length} pledged gold loans</p>
-        </div>
-
-        {/* 5. Monthly Savings */}
-        <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 card-hover">
+        {/* 3. Net Balance */}
+        <div className="rounded-3xl border border-slate-200/80 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:col-span-2 lg:col-span-1">
           <div className="flex items-center justify-between text-blue-600 dark:text-blue-400">
             <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-              Savings & SIP
+              Net Balance
             </span>
             <div className="rounded-xl bg-blue-50 p-2 dark:bg-blue-950/40">
-              <PiggyBank className="h-4 w-4" />
-            </div>
-          </div>
-          <p className="mt-2 text-lg sm:text-xl font-extrabold text-slate-900 dark:text-white">
-            {formatINR(summary.monthlyInvestments + summary.monthlySavings)}
-          </p>
-          <p className="mt-1 text-[11px] font-medium text-blue-600">Rate: {summary.savingsRate}%</p>
-        </div>
-
-        {/* 6. Remaining Surplus */}
-        <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 card-hover">
-          <div className="flex items-center justify-between text-emerald-600 dark:text-emerald-400">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-              Monthly Surplus
-            </span>
-            <div className="rounded-xl bg-emerald-50 p-2 dark:bg-emerald-950/40">
               <Wallet className="h-4 w-4" />
             </div>
           </div>
           <p
-            className={`mt-2 text-lg sm:text-xl font-extrabold ${
-              summary.monthlySurplus >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
+            className={`mt-2 text-2xl font-extrabold ${
+              filteredBalance >= 0 ? 'text-slate-900 dark:text-white' : 'text-rose-600'
             }`}
           >
-            {formatINR(summary.monthlySurplus)}
+            {formatINR(filteredBalance)}
           </p>
-          <p className="mt-1 text-[11px] font-medium text-slate-500">Calculated after outflows</p>
-        </div>
-
-        {/* 7. Total Outstanding Debt */}
-        <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 card-hover">
-          <div className="flex items-center justify-between text-rose-600 dark:text-rose-400">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-              Total Outstanding Debt
-            </span>
-            <div className="rounded-xl bg-rose-50 p-2 dark:bg-rose-950/40">
-              <Flame className="h-4 w-4" />
-            </div>
+          <div className="mt-2 flex items-center justify-between text-[11px] text-slate-400">
+            <span>Monthly Surplus: {formatINR(summary.currentMonthBalance)}</span>
+            <span className="font-semibold text-slate-500">Income - Expense</span>
           </div>
-          <p className="mt-2 text-lg sm:text-xl font-extrabold text-slate-900 dark:text-white">
-            {formatINR(summary.totalOutstandingDebt)}
-          </p>
-          <p className="mt-1 text-[11px] font-medium text-rose-500">Loans + Gold Loans</p>
-        </div>
-
-        {/* 8. Net Worth */}
-        <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 card-hover">
-          <div className="flex items-center justify-between text-purple-600 dark:text-purple-400">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-              Net Worth
-            </span>
-            <div className="rounded-xl bg-purple-50 p-2 dark:bg-purple-950/40">
-              <TrendingUp className="h-4 w-4" />
-            </div>
-          </div>
-          <p
-            className={`mt-2 text-lg sm:text-xl font-extrabold ${
-              summary.netWorth >= 0 ? 'text-purple-600 dark:text-purple-400' : 'text-rose-600 dark:text-rose-400'
-            }`}
-          >
-            {formatINR(summary.netWorth)}
-          </p>
-          <p className="mt-1 text-[11px] font-medium text-slate-500">Assets minus liabilities</p>
         </div>
       </div>
 
-      {/* Top AI Advisor Priority Recommendation Card */}
-      {advisorInsights.length > 0 && (
-        <div className="rounded-3xl border border-blue-200 bg-gradient-to-r from-blue-50 to-indigo-50/80 p-5 dark:border-blue-900/50 dark:from-slate-900 dark:to-blue-950/40">
-          <div className="flex items-start justify-between">
-            <div className="flex items-start gap-3">
-              <div className="rounded-2xl bg-blue-600 p-2.5 text-white shadow-md shadow-blue-500/20 mt-0.5">
-                <BrainCircuit className="h-5 w-5" />
-              </div>
-              <div>
-                <span className="rounded-full bg-blue-600/10 px-2.5 py-0.5 text-[10px] font-extrabold uppercase text-blue-700 dark:text-blue-300">
-                  Priority Recommendation
-                </span>
-                <h3 className="mt-1 text-base font-bold text-slate-900 dark:text-white">
-                  {advisorInsights[0].title}
-                </h3>
-                <p className="mt-1 text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-                  {advisorInsights[0].insight}
-                </p>
-                <p className="mt-2 text-xs font-semibold text-blue-700 dark:text-blue-300">
-                  💡 {advisorInsights[0].recommendation}
-                </p>
-              </div>
-            </div>
-
+      {/* Quick Action FAB Callout */}
+      {incomes.length === 0 && expenses.length === 0 && (
+        <div className="rounded-3xl border border-blue-200 bg-blue-50/60 p-6 text-center dark:border-blue-900/40 dark:bg-blue-950/20 space-y-3">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-600 text-white font-extrabold shadow-md">
+            ₹
+          </div>
+          <div>
+            <h3 className="text-base font-bold text-slate-900 dark:text-white">Welcome to My Finance</h3>
+            <p className="text-xs text-slate-500 max-w-md mx-auto mt-1">
+              Start by adding your first monthly income or expense transaction. The dashboard will instantly update.
+            </p>
+          </div>
+          <div className="flex items-center justify-center gap-3 pt-1">
             <button
-              onClick={() => onNavigate('advisor')}
-              className="flex items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2 text-xs font-bold text-white shadow hover:bg-blue-700 transition-all shrink-0"
+              onClick={() => onOpenAddModal('income')}
+              className="rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white shadow hover:bg-emerald-700"
             >
-              <span>View All Insights</span>
-              <ArrowRight className="h-3.5 w-3.5" />
+              + Add Income
+            </button>
+            <button
+              onClick={() => onOpenAddModal('expense')}
+              className="rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-bold text-white shadow hover:bg-blue-700"
+            >
+              + Add Expense
             </button>
           </div>
         </div>
       )}
 
-      {/* Charts Grid */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        {/* Income vs Expenses Cash-flow Chart */}
-        <div className="rounded-3xl border border-slate-200/80 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 lg:col-span-2">
+      {/* 4 Clean Charts Grid */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        {/* Chart 1: Income vs Expense Comparison Bar Chart */}
+        <div className="rounded-3xl border border-slate-200/80 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
           <div className="flex items-center justify-between pb-4">
-            <div>
-              <h3 className="text-sm font-bold text-slate-900 dark:text-white">Monthly Cash Flow Trend</h3>
-              <p className="text-xs text-slate-500">Income vs Expenses vs Debt Service</p>
-            </div>
-            <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-600 dark:bg-blue-950/40 dark:text-blue-400">
-              EMI Burden: {summary.emiBurdenRate}%
-            </span>
+            <h3 className="text-sm font-bold text-slate-900 dark:text-white">Income vs Expense Comparison</h3>
+            <span className="text-[11px] text-slate-400">Total Breakdown</span>
           </div>
 
-          <div className="h-64 w-full">
+          <div className="h-60 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={cashFlowTrend}>
-                <XAxis dataKey="month" stroke="#94a3b8" fontSize={11} tickLine={false} />
-                <YAxis stroke="#94a3b8" fontSize={11} tickFormatter={(val) => `₹${val / 1000}k`} tickLine={false} />
+              <BarChart
+                data={[
+                  { name: 'Income', amount: filteredTotalIncome },
+                  { name: 'Expense', amount: filteredTotalExpense },
+                  { name: 'Balance', amount: Math.max(0, filteredBalance) },
+                ]}
+                margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
+              >
+                <XAxis dataKey="name" stroke="#94a3b8" fontSize={11} />
+                <YAxis stroke="#94a3b8" fontSize={11} tickFormatter={(v) => `₹${v}`} />
                 <Tooltip formatter={(val) => formatINR(Number(val))} />
-                <Bar dataKey="income" fill="#10B981" radius={[4, 4, 0, 0]} name="Income" />
-                <Bar dataKey="expense" fill="#EF4444" radius={[4, 4, 0, 0]} name="Expenses" />
-                <Bar dataKey="emi" fill="#6366F1" radius={[4, 4, 0, 0]} name="EMI" />
+                <Bar dataKey="amount" fill="#3B82F6" radius={[8, 8, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
         </div>
 
-        {/* Expense Category Breakdown Pie Chart */}
+        {/* Chart 2: Expense by Category Pie Chart */}
         <div className="rounded-3xl border border-slate-200/80 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
           <div className="flex items-center justify-between pb-4">
-            <h3 className="text-sm font-bold text-slate-900 dark:text-white">Expense Categories</h3>
+            <h3 className="text-sm font-bold text-slate-900 dark:text-white">Expense by Category</h3>
             <button
               onClick={() => onNavigate('categories')}
-              className="text-xs font-semibold text-blue-600 hover:underline dark:text-blue-400"
+              className="text-xs font-semibold text-blue-600 hover:underline"
             >
-              Analyze
+              Manage
             </button>
           </div>
 
-          {categoryPieData.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-10 text-center space-y-3">
-              <div className="h-12 w-12 rounded-2xl bg-slate-100 flex items-center justify-center dark:bg-slate-800 text-slate-400">
-                <PieChartIcon className="h-6 w-6" />
-              </div>
-              <div>
-                <p className="text-xs font-bold text-slate-900 dark:text-white">No expenses recorded yet</p>
-                <p className="text-[11px] text-slate-400 mt-0.5">Start recording expenses to view category distribution</p>
-              </div>
+          {expensePieData.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 text-center space-y-2">
+              <p className="text-xs font-semibold text-slate-400">No expense entries recorded yet.</p>
               <button
-                onClick={() => onNavigate('expenses')}
-                className="rounded-xl bg-blue-600 px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-blue-700"
+                onClick={() => onOpenAddModal('expense')}
+                className="text-xs font-bold text-blue-600 hover:underline"
               >
-                + Add First Expense
+                + Add Expense
               </button>
             </div>
           ) : (
-            <>
-              <div className="h-52 w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={categoryPieData}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={50}
-                      outerRadius={75}
-                      paddingAngle={4}
-                      dataKey="value"
-                    >
-                      {categoryPieData.map((_, index) => (
-                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <Tooltip formatter={(val) => formatINR(Number(val))} />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-
-              <div className="mt-2 space-y-1.5 max-h-28 overflow-y-auto pr-1">
-                {categoryPieData.slice(0, 5).map((cat, idx) => (
-                  <div key={cat.name} className="flex items-center justify-between text-xs font-medium">
-                    <div className="flex items-center gap-2">
-                      <div
-                        className="h-2.5 w-2.5 rounded-full"
-                        style={{ backgroundColor: COLORS[idx % COLORS.length] }}
-                      />
-                      <span className="text-slate-600 dark:text-slate-300">{cat.name}</span>
-                    </div>
-                    <span className="font-bold text-slate-900 dark:text-white">{formatINR(cat.value)}</span>
-                  </div>
-                ))}
-              </div>
-            </>
+            <div className="h-60 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={expensePieData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={45}
+                    outerRadius={75}
+                    paddingAngle={4}
+                    dataKey="value"
+                  >
+                    {expensePieData.map((_, index) => (
+                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip formatter={(val) => formatINR(Number(val))} />
+                  <Legend wrapperStyle={{ fontSize: '11px' }} />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
           )}
         </div>
-      </div>
 
-      {/* Upcoming EMIs & Gold Loan Dues + Goals */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        {/* Upcoming EMI & Loan Schedule */}
+        {/* Chart 3: Income by Category Pie Chart */}
         <div className="rounded-3xl border border-slate-200/80 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800">
-            <div className="flex items-center gap-2">
-              <Calendar className="h-4 w-4 text-blue-600" />
-              <h3 className="text-sm font-bold text-slate-900 dark:text-white">Upcoming EMI & Gold Loan Dues</h3>
-            </div>
+          <div className="flex items-center justify-between pb-4">
+            <h3 className="text-sm font-bold text-slate-900 dark:text-white">Income by Source Category</h3>
             <button
-              onClick={() => onNavigate('loans')}
-              className="text-xs font-semibold text-blue-600 hover:underline dark:text-blue-400"
+              onClick={() => onNavigate('income')}
+              className="text-xs font-semibold text-blue-600 hover:underline"
             >
-              View All ({activeLoans.length + activeGoldLoans.length})
+              View Incomes
             </button>
           </div>
 
-          <div className="mt-4 space-y-3">
-            {activeLoans.map((loan) => (
-              <div
-                key={loan.id}
-                className="flex items-center justify-between rounded-2xl bg-slate-50 p-3.5 dark:bg-slate-800/50"
+          {incomePieData.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 text-center space-y-2">
+              <p className="text-xs font-semibold text-slate-400">No income entries recorded yet.</p>
+              <button
+                onClick={() => onOpenAddModal('income')}
+                className="text-xs font-bold text-emerald-600 hover:underline"
               >
-                <div>
-                  <p className="text-xs font-bold text-slate-900 dark:text-white">{loan.name}</p>
-                  <p className="text-[11px] text-slate-500">
-                    Due on {loan.due_date_day}th of month • {loan.remaining_tenure} EMIs left
-                  </p>
-                </div>
-                <div className="text-right">
-                  <p className="text-xs font-extrabold text-indigo-600 dark:text-indigo-400">
-                    {formatINR(loan.emi_amount)}
-                  </p>
-                  <p className="text-[10px] text-slate-400">{loan.lender}</p>
-                </div>
-              </div>
-            ))}
-
-            {activeGoldLoans.map((gl) => (
-              <div
-                key={gl.id}
-                className="flex items-center justify-between rounded-2xl bg-amber-50/60 p-3.5 dark:bg-amber-950/20"
-              >
-                <div>
-                  <p className="text-xs font-bold text-amber-900 dark:text-amber-200">{gl.name}</p>
-                  <p className="text-[11px] text-amber-700/80 dark:text-amber-400">
-                    Monthly Interest Payment ({gl.interest_rate}%)
-                  </p>
-                </div>
-                <div className="text-right">
-                  <p className="text-xs font-extrabold text-amber-600 dark:text-amber-400">
-                    {formatINR(gl.monthly_payment)}
-                  </p>
-                  <p className="text-[10px] text-slate-400">{gl.lender}</p>
-                </div>
-              </div>
-            ))}
-          </div>
+                + Add Income
+              </button>
+            </div>
+          ) : (
+            <div className="h-60 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={incomePieData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={45}
+                    outerRadius={75}
+                    paddingAngle={4}
+                    dataKey="value"
+                  >
+                    {incomePieData.map((_, index) => (
+                      <Cell key={`cell-inc-${index}`} fill={COLORS[(index + 3) % COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip formatter={(val) => formatINR(Number(val))} />
+                  <Legend wrapperStyle={{ fontSize: '11px' }} />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          )}
         </div>
 
-        {/* Financial Goal Progress */}
+        {/* Chart 4: Monthly Trend Line Chart */}
         <div className="rounded-3xl border border-slate-200/80 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800">
-            <h3 className="text-sm font-bold text-slate-900 dark:text-white">Financial Goal Progress</h3>
-            <button
-              onClick={() => onNavigate('goals')}
-              className="text-xs font-semibold text-blue-600 hover:underline dark:text-blue-400"
-            >
-              Manage Goals
-            </button>
+          <div className="flex items-center justify-between pb-4">
+            <h3 className="text-sm font-bold text-slate-900 dark:text-white">Monthly Cash Flow Trend</h3>
+            <span className="text-[11px] text-slate-400">Last 6 Months</span>
           </div>
 
-          <div className="mt-4 space-y-4">
-            {goals.map((goal) => {
-              const progress = Math.min(100, Math.round((goal.current_amount / goal.target_amount) * 100));
-              return (
-                <div key={goal.id} className="space-y-1.5">
-                  <div className="flex justify-between text-xs font-semibold">
-                    <span className="text-slate-800 dark:text-slate-200">{goal.name}</span>
-                    <span className="text-blue-600 dark:text-blue-400 font-bold">{progress}%</span>
-                  </div>
-
-                  <div className="h-2.5 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
-                    <div
-                      className="h-full bg-gradient-to-r from-blue-600 to-indigo-500 transition-all duration-300"
-                      style={{ width: `${progress}%` }}
-                    />
-                  </div>
-
-                  <div className="flex justify-between text-[11px] text-slate-500">
-                    <span>{formatINR(goal.current_amount)} saved</span>
-                    <span>Target: {formatINR(goal.target_amount)}</span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+          {trendData.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 text-center text-xs text-slate-400">
+              Monthly trend line will render once transactions are added.
+            </div>
+          ) : (
+            <div className="h-60 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={trendData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                  <XAxis dataKey="month" stroke="#94a3b8" fontSize={11} />
+                  <YAxis stroke="#94a3b8" fontSize={11} tickFormatter={(v) => `₹${v}`} />
+                  <Tooltip formatter={(val) => formatINR(Number(val))} />
+                  <Legend wrapperStyle={{ fontSize: '11px' }} />
+                  <Line type="monotone" dataKey="Income" stroke="#10B981" strokeWidth={2.5} />
+                  <Line type="monotone" dataKey="Expense" stroke="#EF4444" strokeWidth={2.5} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          )}
         </div>
       </div>
     </div>

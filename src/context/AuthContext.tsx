@@ -1,9 +1,8 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import type { User, Session } from '@supabase/supabase-js';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
-import type { UserProfile, PermissionKey } from '../types';
+import type { UserProfile } from '../types';
 import { dataService } from '../services/dataService';
-import { userService } from '../services/userService';
 
 interface AuthContextType {
   user: User | null;
@@ -12,7 +11,6 @@ interface AuthContextType {
   loading: boolean;
   isAdmin: boolean;
   isDeactivated: boolean;
-  hasPermission: (permissionKey: PermissionKey) => boolean;
   signIn: (email: string, password: string, rememberMe?: boolean) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
   resetPassword: (email: string) => Promise<{ error: Error | null }>;
@@ -28,16 +26,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
 
-  // Role Checks
+  // Admin Check
   const isAdmin = !isSupabaseConfigured || (profile ? profile.role === 'ADMIN' : true);
   const isDeactivated = profile ? profile.is_active === false : false;
-
-  const hasPermission = (permissionKey: PermissionKey): boolean => {
-    if (!isSupabaseConfigured) return true;
-    if (isAdmin) return true;
-    if (isDeactivated) return false;
-    return profile?.permissions?.includes(permissionKey) ?? false;
-  };
 
   const loadProfile = async (targetUser?: User | null) => {
     try {
@@ -46,20 +37,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setProfile(null);
         return;
       }
-
       const p = await dataService.getProfile();
-      if (p) {
-        // Load user permissions
-        if (isSupabaseConfigured && activeUser) {
-          const usersList = await userService.getUsers();
-          const found = usersList.find((u) => u.id === activeUser.id);
-          if (found) {
-            setProfile(found);
-            return;
-          }
-        }
-        setProfile(p);
-      }
+      setProfile(p);
     } catch (e) {
       console.error('Error loading profile:', e);
     }
@@ -71,6 +50,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     async function initAuth() {
       if (isSupabaseConfigured) {
         try {
+          // Restore persistent session on refresh / browser reopen
           const { data: { session: initialSession } } = await supabase.auth.getSession();
           if (mounted) {
             setSession(initialSession);
@@ -101,7 +81,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           authListener.subscription.unsubscribe();
         };
       } else {
-        // Local Sandbox Mode
+        // Sandboxed Mode
         await loadProfile();
         if (mounted) setLoading(false);
       }
@@ -116,7 +96,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const signIn = async (email: string, password: string, _rememberMe: boolean = true) => {
     if (!isSupabaseConfigured) {
-      const mockUser = { id: `admin-1`, email } as User;
+      const mockUser = { id: 'usr-admin', email } as User;
       setUser(mockUser);
       await loadProfile(mockUser);
       return { error: null };
@@ -129,6 +109,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     if (!error && data.user) {
       setUser(data.user);
+      setSession(data.session);
       await loadProfile(data.user);
     }
     return { error: error as Error | null };
@@ -171,7 +152,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         loading,
         isAdmin,
         isDeactivated,
-        hasPermission,
         signIn,
         signOut,
         resetPassword,
